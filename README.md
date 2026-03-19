@@ -1,2 +1,3 @@
 # Disk-Hunter
-a all in one, web based it disk tester / manager / destoyer 
+An all in one, web based IT disk tester / manager / destoyer / firmware updater 
+curently in dev

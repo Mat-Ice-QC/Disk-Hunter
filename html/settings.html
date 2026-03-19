@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Settings</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="card" style="max-width: 600px;">
+                <h2>Drive Image Manager</h2>
+                <p>Upload a custom 4:3 image for your hardware. It will dynamically appear in the Disk Overview. (Max 100MB, JPG/PNG only).</p>
+                
+                <form id="image-upload-form" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Select Target Drive</label>
+                        <select id="drive-select" style="width: 100%; padding: 10px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; outline: none;">
+                            <option value="">Loading drives...</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Select Image File</label>
+                        <input type="file" id="image-file" accept="image/*" style="width: 100%; padding: 10px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px;">
+                    </div>
+                    
+                    <button type="submit" style="background: var(--primary); color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;">Upload & Apply Image</button>
+                    <div id="upload-status" style="font-size: 14px; margin-top: 5px;"></div>
+                </form>
+            </div>
+        </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/settings.js"></script>
+</body>
+</html>
