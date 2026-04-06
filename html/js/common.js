@@ -1,64 +1,88 @@
-// html/js/common.js
-
-async function loadComponents() {
-    try {
-        const sidebarRes = await fetch('components/sidebar.html');
-        document.getElementById('sidebar-container').innerHTML = await sidebarRes.text();
-
-        const headerRes = await fetch('components/header.html');
-        document.getElementById('header-container').innerHTML = await headerRes.text();
-
-        const currentPath = window.location.pathname.split('/').pop() || 'index.html';
-        const menuItems = document.querySelectorAll('.menu-item');
-        menuItems.forEach(item => {
-            if (item.getAttribute('href') === currentPath) {
-                item.classList.add('active');
-            }
-        });
-
-        // Start local clock
-        updateMontrealTime();
-        setInterval(updateMontrealTime, 1000);
-
-        // Fetch real server hardware info right away, then every 5 seconds
+document.addEventListener('DOMContentLoaded', () => {
+    loadComponent('sidebar-container', 'components/sidebar.html', setActiveSidebarLink);
+    loadComponent('header-container', 'components/header.html', () => {
+        // After header is loaded, initialize its dynamic parts
         fetchSystemInfo();
-        setInterval(fetchSystemInfo, 5000);
+        setInterval(fetchSystemInfo, 10000);
+        updateTime();
+        setInterval(updateTime, 1000);
+    });
+});
 
-    } catch (error) {
-        console.error("Error loading components:", error);
+function loadComponent(elementId, url, callback) {
+    const container = document.getElementById(elementId);
+    if (!container) {
+        return;
+    }
+    fetch(url)
+        .then(response => response.text())
+        .then(data => {
+            container.innerHTML = data;
+            if (callback) {
+                callback();
+            }
+        })
+        .catch(error => console.error(`Failed to load component ${url}:`, error));
+}
+
+function setActiveSidebarLink() {
+    const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+    const pageIdMap = {
+        'index.html': 'nav-index',
+        'shredding.html': 'nav-shredding',
+        'history.html': 'nav-history',
+        'smartctl.html': 'nav-smartctl',
+        'smart_history.html': 'nav-smart-history',
+        'network-share.html': 'nav-network-share',
+        'partition.html': 'nav-partition',
+        'speedtest.html': 'nav-speedtest',
+        'iso.html': 'nav-iso',
+        'settings.html': 'nav-settings'
+    };
+    
+    // Default to index if not found
+    const activeId = pageIdMap[currentPage] || 'nav-index';
+    const activeLink = document.getElementById(activeId);
+    if (activeLink) {
+        activeLink.classList.add('active');
+        // If it's a submenu item, also activate its parent
+        if (activeLink.classList.contains('submenu-item')) {
+            const parentId = pageIdMap['shredding.html']; // Assuming shredding is the parent
+            const parentLink = document.getElementById(parentId);
+            if (parentLink) {
+                parentLink.classList.add('active');
+            }
+        }
     }
 }
 
-function updateMontrealTime() {
-    const timeElement = document.getElementById('mtl-time');
-    if (!timeElement) return;
 
-    const options = { 
-        timeZone: 'America/Montreal', 
-        year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        hour12: false
-    };
-    timeElement.innerText = new Intl.DateTimeFormat('en-CA', options).format(new Date());
-}
-
-// Fetch real server IP, Temperature, and Hostname
 async function fetchSystemInfo() {
     try {
-        const response = await fetch('/api/system-info');
-        const data = await response.json();
-        
-        const hostEl = document.getElementById('sys-host');
+        const res = await fetch('/api/system-info');
+        if (!res.ok) {
+            throw new Error(`API responded with ${res.status}`);
+        }
+        const data = await res.json();
+        const hostnameEl = document.getElementById('sys-hostname');
         const tempEl = document.getElementById('sys-temp');
         const ipEl = document.getElementById('sys-ip');
 
-        if (hostEl) hostEl.innerText = data.hostname || "Unknown";
-        if (tempEl) tempEl.innerText = data.temperature !== "N/A" ? `${data.temperature}°C` : "N/A";
-        if (ipEl) ipEl.innerText = data.ip;
+        if(hostnameEl) hostnameEl.innerText = data.hostname || 'Unknown';
+        if(tempEl) tempEl.innerText = data.temperature !== 'N/A' ? data.temperature + '°C' : 'N/A';
+        if(ipEl) ipEl.innerText = data.ip || 'Unknown';
 
-    } catch (error) {
-        console.error("Failed to fetch system info from backend", error);
+    } catch (e) {
+        console.error("Failed to fetch sys info", e);
+        const hostnameEl = document.getElementById('sys-hostname');
+        if(hostnameEl) hostnameEl.innerText = 'Error';
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadComponents);
+function updateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-US', { hour12: false });
+    const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timeEl = document.getElementById('sys-time');
+    if (timeEl) timeEl.innerText = `${dateString}, ${timeString}`;
+}

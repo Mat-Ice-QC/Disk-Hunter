@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Hunter | Shredding</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shredding.css"> 
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,11 +14,67 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>Disk Shredding</h2>
-                <p>Securely wipe your drives using advanced algorithms (DoD 5220.22-M, Gutmann, Random Data). Data destroyed here cannot be recovered probably going to use dban.</p>
-                <div id="shred-ui-container">
+            <div class="shredding-layout">
+                
+                <div class="shredding-column-sidebar">
+                    <h2 class="title-danger">Disk Shredding</h2>
+                    <p>Select drives via checkboxes, configure your wipe standard, and execute.</p>
+                    
+                    <div class="config-box">
+                        <label class="shred-label">Wipe Algorithm</label>
+                        <select id="wipe-method" class="shred-select">
+                            <option value="zero">Fill With Zeros (1 Pass)</option>
+                            <option value="dodshort" selected>DoD Short 5220.22-M (3 Passes)</option>
+                            <option value="dod522022m">DoD Full 5220.22-M (7 Passes)</option>
+                            <option value="gutmann">Gutmann Wipe (35 Passes)</option>
+                            <option value="ops2">RCMP TSSIT OPS-II (7 Passes)</option>
+                            <option value="is5enh">HMG IS5 Enhanced (3 Passes)</option>
+                            <option value="schneier">Schneier Wipe (7 Passes)</option>
+                            <option value="prng">PRNG Stream (Random Pass)</option>
+                        </select>
+
+                        <label class="shred-label">Verification</label>
+                        <select id="wipe-verify" class="shred-select">
+                            <option value="off">No Verification</option>
+                            <option value="last" selected>Verify Last Pass Only</option>
+                            <option value="all">Verify All Passes (Very Slow)</option>
+                        </select>
+
+                        <button id="btn-initiate-wipe" class="btn-shred">Initiate Destruction</button>
                     </div>
+                </div>
+
+                <div class="shredding-column-main">
+                    
+                    <div id="active-wipes-section" style="display: none; margin-bottom: 30px;">
+                        <h3 class="title-danger-small">⚙️ Active Shredding Jobs</h3>
+                        <div id="active-list-container" class="drive-list-grid"></div>
+                    </div>
+
+                    <h3>Available Targets</h3>
+                    <div id="shred-list-container" class="drive-list-grid mt-15">
+                        <p>Scanning hardware...</p>
+                    </div>
+
+                    <div id="debug-console">
+                        <div class="debug-header">⚙️ API DEBUG TERMINAL</div>
+                        <div id="debug-output">Awaiting execution...</div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+        <div id="shred-modal" class="modal-overlay">
+            <div class="modal-box">
+                <div class="modal-header">⚠️ DANGER: Confirm Data Destruction</div>
+                <p>You are about to irreversibly destroy all data, partition tables, and file systems on the following drives:</p>
+                <div class="modal-drives" id="modal-drive-list"></div>
+                <p class="modal-text-muted">A dedicated, isolated Docker container will be spun up for each drive. This process cannot be paused or reversed once started.</p>
+                <div class="modal-actions">
+                    <button id="btn-cancel" class="btn-modal-cancel">Cancel</button>
+                    <button id="btn-confirm" class="btn-modal-confirm">I Understand, Destroy Data</button>
+                </div>
             </div>
         </div>
     </div>

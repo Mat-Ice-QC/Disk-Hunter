@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   disk-hunter-ui:
     image: nginx:alpine
@@ -19,5 +17,36 @@ services:
       - /dev:/dev
       - /sys:/sys:ro
       - /run/udev:/run/udev:ro
-      - ./html/images/drives:/app/images/drives 
+      - /var/run/docker.sock:/var/run/docker.sock 
+      - ./data:/app/data
     network_mode: host
+
+  disk-hunter-nwipe:
+    build: ./nwipe
+    image: disk-hunter-nwipe
+
+  disk-hunter-smartctl-test:
+    build: ./smartctl-test
+    image: disk-hunter-smartctl-test
+
+  disk-hunter-parted:
+    build: ./parted
+    image: disk-hunter-parted
+    container_name: disk_hunter_parted
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - /sys:/sys:ro
+      - /run/udev:/run/udev:ro
+    network_mode: "host"
+
+  disk-hunter-smart-provider:
+    build: ./smart-provider
+    image: disk-hunter-smart-provider
+    container_name: disk_hunter_smart_provider
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /dev:/dev
+    network_mode: "host"

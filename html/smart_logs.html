@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disk Hunter | Network Share</title>
+    <title>Disk Hunter | S.M.A.R.T. Test Logs</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/smartctl.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,16 +14,16 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>Network Share</h2>
-                <p>Create network shares from disks .</p>
-                <div id="network-ui-container">
-                </div>
+            <h2 class="title">S.M.A.R.T. Test Log</h2>
+            <p><a href="/smartctl.html">&larr; Back to S.M.A.R.T. Tests</a></p>
+            
+            <div id="log-container" class="log-box" style="margin-top: 20px;">
+                <p>Loading logs...</p>
             </div>
         </div>
     </div>
 
     <script src="js/common.js"></script>
-    <script src="js/network-share.js"></script>
+    <script src="js/smart_logs.js"></script>
 </body>
 </html>

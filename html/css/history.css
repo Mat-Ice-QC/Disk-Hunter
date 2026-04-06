@@ -1,0 +1,10 @@
+.history-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #0f172a; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+.history-table th { background: #1e293b; padding: 15px; text-align: left; color: var(--primary); font-size: 14px; border-bottom: 1px solid #334155; }
+.history-table td { padding: 15px; border-bottom: 1px solid #334155; font-size: 14px; color: var(--text-main); }
+.history-table tr:hover { background: rgba(59, 130, 246, 0.05); }
+.btn-pdf { background: #ef4444; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
+
+#loading-message td {
+    text-align: center;
+    color: var(--text-muted);
+}

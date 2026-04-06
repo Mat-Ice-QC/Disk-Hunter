@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Hunter | Partition Editor</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shredding.css">
+    <style>
+        .partition-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #0f172a; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+        .partition-table th { background: #1e293b; padding: 15px; text-align: left; color: var(--primary); font-size: 14px; border-bottom: 1px solid #334155; }
+        .partition-table td { padding: 15px; border-bottom: 1px solid #334155; font-size: 14px; color: var(--text-main); }
+        .partition-table tr:hover { background: rgba(59, 130, 246, 0.05); }
+        .drive-list { list-style: none; padding: 0; margin: 0; }
+        .drive-list li { padding: 10px; border: 1px solid #334155; margin-bottom: 10px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .drive-list li:hover { background: #1e293b; }
+        .drive-list li.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        .action-bar { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .action-form { background: #1e293b; padding: 20px; border-radius: 8px; margin-top: 20px; display: none; }
+        .action-form.active { display: block; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-row > div { flex: 1; }
+    </style>
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,11 +29,176 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>Partition Editor</h2>
-                <p>Create, resize, delete, or format partitions dynamically. Supports any and all FS.</p>
-                <div id="partition-ui-container">
+            <div class="shredding-layout">
+                <div class="shredding-column-sidebar">
+                    <h2 class="title">Drives</h2>
+                    <ul id="drive-selector" class="drive-list">
+                        <li>Loading drives...</li>
+                    </ul>
+                </div>
+
+                <div class="shredding-column-main">
+                    <div class="card" id="editor-card" style="display: none;">
+                        <h3>Partition Editor: <span id="current-drive-label" style="color: var(--primary);">None</span></h3>
+                        
+                        <div id="disk-info"></div>
+
+                        <div id="partition-graphic" class="partition-graphic">
+                            <!-- Graphic parts injected here -->
+                        </div>
+
+                        <div class="action-bar">
+                            <button class="btn-action" onclick="showForm('form-mklabel')">Change Partition Table</button>
+                            <button class="btn-action" onclick="showForm('form-mkpart')">Create Partition</button>
+                            <button class="btn-action" onclick="showForm('form-format')">Format</button>
+                            <button class="btn-action" onclick="showForm('form-rm')">Delete</button>
+                            <button class="btn-action" onclick="showForm('form-name')">Name (GPT)</button>
+                            <button class="btn-action" onclick="showForm('form-set')">Set Flag</button>
+                        </div>
+
+                        <!-- Form: mklabel -->
+                        <div id="form-mklabel" class="action-form">
+                            <h4>Create Partition Table (WARNING: Destroys all data)</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Type</label>
+                                    <select id="mklabel-type" class="shred-select">
+                                        <option value="gpt">GPT</option>
+                                        <option value="msdos">MSDOS (MBR)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn-shred" style="background: var(--accent-red);" onclick="submitAction('mklabel', [document.getElementById('mklabel-type').value])">Create Table</button>
+                        </div>
+
+                        <!-- Form: mkpart -->
+                        <div id="form-mkpart" class="action-form">
+                            <h4>Create Partition</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Type (e.g. primary)</label>
+                                    <select id="mkpart-type" class="shred-select">
+                                        <option value="primary">Primary</option>
+                                        <option value="logical">Logical</option>
+                                        <option value="extended">Extended</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="shred-label">Start (e.g. 0%, 1MB)</label>
+                                    <input type="text" id="mkpart-start" class="form-input-text" value="0%">
+                                </div>
+                                <div>
+                                    <label class="shred-label">End (e.g. 100%, 50GB)</label>
+                                    <input type="text" id="mkpart-end" class="form-input-text" value="100%">
+                                </div>
+                            </div>
+                            <button class="btn-shred" onclick="submitAction('mkpart', [document.getElementById('mkpart-type').value, document.getElementById('mkpart-start').value, document.getElementById('mkpart-end').value])">Create</button>
+                        </div>
+
+                        <!-- Form: format -->
+                        <div id="form-format" class="action-form">
+                            <h4>Format Partition</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Partition Number</label>
+                                    <input type="number" id="format-num" class="form-input-text" min="1" value="1">
+                                </div>
+                                <div>
+                                    <label class="shred-label">File System</label>
+                                    <select id="format-fs" class="shred-select">
+                                        <option value="ext4">ext4</option>
+                                        <option value="ext3">ext3</option>
+                                        <option value="fat32">fat32</option>
+                                        <option value="ntfs">ntfs</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn-shred" onclick="submitAction('format', [document.getElementById('format-num').value, document.getElementById('format-fs').value])">Format</button>
+                        </div>
+
+                        <!-- Form: rm -->
+                        <div id="form-rm" class="action-form">
+                            <h4>Delete Partition</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Partition Number</label>
+                                    <input type="number" id="rm-num" class="form-input-text" min="1" value="1">
+                                </div>
+                            </div>
+                            <button class="btn-shred" style="background: var(--accent-red);" onclick="submitAction('rm', [document.getElementById('rm-num').value])">Delete</button>
+                        </div>
+
+                        <!-- Form: name -->
+                        <div id="form-name" class="action-form">
+                            <h4>Name Partition (GPT/Mac only)</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Partition Number</label>
+                                    <input type="number" id="name-num" class="form-input-text" min="1" value="1">
+                                </div>
+                                <div>
+                                    <label class="shred-label">Name</label>
+                                    <input type="text" id="name-val" class="form-input-text" placeholder="Partition Name">
+                                </div>
+                            </div>
+                            <button class="btn-shred" onclick="submitAction('name', [document.getElementById('name-num').value, document.getElementById('name-val').value])">Set Name</button>
+                        </div>
+
+                        <!-- Form: set -->
+                        <div id="form-set" class="action-form">
+                            <h4>Set Flag</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label class="shred-label">Partition Number</label>
+                                    <input type="number" id="set-num" class="form-input-text" min="1" value="1">
+                                </div>
+                                <div>
+                                    <label class="shred-label">Flag</label>
+                                    <select id="set-flag" class="shred-select">
+                                        <option value="boot">boot</option>
+                                        <option value="root">root</option>
+                                        <option value="swap">swap</option>
+                                        <option value="hidden">hidden</option>
+                                        <option value="raid">raid</option>
+                                        <option value="lvm">lvm</option>
+                                        <option value="lba">lba</option>
+                                        <option value="esp">esp</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="shred-label">State</label>
+                                    <select id="set-state" class="shred-select">
+                                        <option value="on">on</option>
+                                        <option value="off">off</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn-shred" onclick="submitAction('set', [document.getElementById('set-num').value, document.getElementById('set-flag').value, document.getElementById('set-state').value])">Set Flag</button>
+                        </div>
+
+                        <div id="action-status" class="status-msg mt-10"></div>
+
+                        <table class="partition-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                    <th>Size</th>
+                                    <th>File System / Type</th>
+                                    <th>Name</th>
+                                    <th>Flags</th>
+                                </tr>
+                            </thead>
+                            <tbody id="partition-body">
+                                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Select a drive to view partitions</td></tr>
+                            </tbody>
+                        </table>
                     </div>
+                    <div id="no-drive-msg" style="text-align: center; color: var(--text-muted); margin-top: 50px;">
+                        Select a drive from the sidebar to manage its partitions.
+                    </div>
+                </div>
             </div>
         </div>
     </div>

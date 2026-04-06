@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disk Hunter | SMART Testing</title>
+    <title>Disk Hunter | S.M.A.R.T. Tests</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shredding.css"> 
+    <link rel="stylesheet" href="css/smartctl.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,11 +15,59 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>SMART Diagnostics</h2>
-                <p>Run short or extended tests using <code>smartctl</code> to evaluate the health, temperature, and lifespan of your physical disks.</p>
-                <div id="smart-ui-container">
+            <div class="shredding-layout">
+                
+                <div class="shredding-column-sidebar">
+                    <h2 class="title">S.M.A.R.T. Testing</h2>
+                    <p>Select drives, choose a test type, and execute.</p>
+                    
+                    <div class="config-box">
+                        <label class="shred-label">Test Type</label>
+                        <select id="test-type" class="shred-select">
+                            <option value="short" selected>Short Test</option>
+                            <option value="long">Extended Test</option>
+                        </select>
+
+                        <button id="btn-initiate-tests" class="btn-shred">Start Tests</button>
                     </div>
+                </div>
+
+                <div class="shredding-column-main">
+                    
+                    <div id="active-tests-section" style="display: none; margin-bottom: 30px;">
+                        <h3 class="title-small">⚙️ Active S.M.A.R.T. Tests</h3>
+                        <div id="active-list-container" class="drive-list-grid"></div>
+                    </div>
+
+                    <h3>Available Drives</h3>
+                    <div id="drive-list-container" class="drive-list-grid mt-15">
+                        <p>Scanning hardware...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="smart-data-raw-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 800px;">
+            <div class="modal-header">Raw S.M.A.R.T. Data</div>
+            <div class="modal-content" style="padding: 20px;">
+                <pre id="smart-data-raw-output" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-close-raw-modal" class="btn-modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="smart-data-parsed-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 1200px;">
+            <div class="modal-header">Parsed S.M.A.R.T. Data</div>
+            <div class="modal-content" style="padding: 20px;">
+                <div id="smart-data-parsed-output"></div>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-close-parsed-modal" class="btn-modal-cancel">Close</button>
             </div>
         </div>
     </div>

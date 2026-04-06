@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | S.M.A.R.T. History</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/history.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+        <div class="content">
+            <h2 class="title-primary">S.M.A.R.T. Test History</h2>
+            <p>A history of all S.M.A.R.T. tests initiated on this system.</p>
+            
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Date & Time</th>
+                        <th>Event</th>
+                        <th>Serial Number</th>
+                        <th>Status</th>
+                        <th>Log</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                    <tr id="loading-message"><td colspan="5">Loading logs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script src="js/common.js"></script>
+    <script src="js/smart_history.js"></script>
+</body>
+</html>

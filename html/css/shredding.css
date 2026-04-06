@@ -1,0 +1,312 @@
+/* html/css/shredding.css */
+
+/* --- Confirmation Modal Styles --- */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center;
+    z-index: 10000; opacity: 0; visibility: hidden; transition: 0.2s; backdrop-filter: blur(4px);
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+
+.modal-box {
+    background: #1e293b;
+    padding: 30px; /* Give it more breathing room */
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px; /* <--- THIS MAKES IT WIDER */
+    border: 1px solid #334155;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    position: relative;
+}
+.modal-overlay.active .modal-box { transform: translateY(0); }
+
+.modal-header { color: var(--accent-red); font-size: 24px; margin-bottom: 15px; font-weight: bold; }
+.modal-drives { max-height: 250px; overflow-y: auto; margin: 15px 0; background: #0f172a; padding: 15px; border-radius: 6px; border: 1px solid #334155; }
+.modal-drive-item { display: flex; align-items: center; gap: 15px; margin-bottom: 10px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+.modal-drive-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.modal-drive-item img { width: 70px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #334155; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px; }
+
+/* --- Wiping Pulse Animation --- */
+@keyframes pulse-border {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.wiping-card { 
+    border: 2px solid var(--accent-red) !important; 
+    background-color: rgba(239, 68, 68, 0.05) !important; 
+    animation: pulse-border 2s infinite; 
+}
+
+/* Ensure buttons inside the wiping card are always clickable */
+.wiping-card button {
+    pointer-events: auto;
+}
+
+/* --- Checkbox Styling --- */
+.drive-checkbox { 
+    width: 22px; 
+    height: 22px; 
+    cursor: pointer; 
+    accent-color: var(--accent-red); 
+}
+
+/* --- Card Content --- */
+.card-header-flex {
+    display: flex;
+    gap: 20px;
+}
+.card-header-spaced {
+    justify-content: space-between;
+    width: 100%;
+}
+.drive-image-small {
+    width: 100px;
+}
+.drive-info h3 {
+    font-size: 18px;
+    margin-bottom: 5px;
+}
+.drive-info-muted {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.drive-info-path {
+    color: var(--accent-red);
+}
+.log-box {
+    background: #000;
+    color: #10b981;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    width: 100%;
+    max-width: 550px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid #334155;
+    line-height: 1.4;
+    margin-top: 8px;
+}
+.stop-button-container {
+    padding-left: 15px;
+}
+.btn-stop {
+    background: transparent;
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+    padding: 8px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.2s;
+}
+.btn-stop:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+.drive-card.selected {
+    border-color: var(--primary);
+}
+.drive-header-clickable {
+    cursor: pointer;
+}
+.checkbox-container {
+    padding-right: 10px;
+    display: flex;
+    align-items: center;
+}
+.badge-wiping {
+    background: var(--accent-red);
+    color: white;
+    margin-left: 10px;
+}
+
+/* Modal drive list */
+.modal-drive-list-item {
+    display: block;
+    padding: 15px;
+    margin-bottom: 10px;
+    background: var(--bg-panel);
+    border: 1px solid #334155;
+    border-radius: 6px;
+}
+.modal-drive-list-item-header {
+    display: flex;
+    gap: 15px;
+}
+.modal-drive-title {
+    font-weight: bold;
+    color: white;
+    font-size: 16px;
+}
+.modal-drive-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.modal-extra-inputs {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.modal-input-group {
+    flex: 1;
+    min-width: 150px;
+}
+.modal-input-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+}
+.modal-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 12px;
+    background: #0f172a;
+    color: white;
+    border: 1px solid #334155;
+    border-radius: 4px;
+}
+.no-drives-message {
+    color: var(--text-muted);
+}
+.debug-console {
+    display: block;
+}
+.debug-system {
+    color: #3b82f6;
+}
+.debug-payload {
+    color: #3b82f6;
+}
+.debug-backend {
+    color: #a855f7;
+}
+.debug-success {
+    color: var(--accent-green);
+}
+.debug-error {
+    color: red;
+}
+
+
+/* Layout */
+.shredding-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+.shredding-column-main {
+    flex: 2;
+}
+.shredding-column-sidebar {
+    flex: 1;
+    min-width: 300px;
+}
+
+/* Titles */
+.title-danger {
+    color: var(--accent-red);
+}
+.title-danger-small {
+    color: var(--accent-red);
+    margin-bottom: 15px;
+}
+
+/* Containers */
+.config-box {
+    background: #0f172a;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    margin-top: 20px;
+}
+.drive-list-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+.mt-15 {
+    margin-top: 15px;
+}
+
+/* Form Elements */
+.shred-label {
+    display: block;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.shred-select {
+    width: 100%;
+    padding: 10px;
+    background: var(--bg-panel);
+    color: white;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+/* Buttons */
+.btn-shred {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent-red);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+}
+.btn-modal-cancel {
+    padding: 10px 20px;
+    background: transparent;
+    color: white;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.btn-modal-confirm {
+    padding: 10px 20px;
+    background: var(--accent-red);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+
+/* Debug Console */
+#debug-console {
+    display: none;
+    background: #000;
+    color: #10b981;
+    font-family: monospace;
+    font-size: 13px;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    margin-bottom: 20px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+#debug-console .debug-header {
+    color: #f59e0b;
+    font-weight: bold;
+    margin-bottom: 10px;
+    border-bottom: 1px dashed #334155;
+    padding-bottom: 5px;
+}
+
+/* Modal text */
+.modal-text-muted {
+    color: var(--text-muted);
+    font-size: 13px;
+}

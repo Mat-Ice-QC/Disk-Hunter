@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Hunter | Settings</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/settings.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,28 +14,137 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card" style="max-width: 600px;">
-                <h2>Drive Image Manager</h2>
-                <p>Upload a custom 4:3 image for your hardware. It will dynamically appear in the Disk Overview. (Max 100MB, JPG/PNG only).</p>
+            <h2 class="title-main">General Settings</h2>
+            
+            <div class="settings-grid">
                 
-                <form id="image-upload-form" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
-                    <div>
-                        <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Select Target Drive</label>
-                        <select id="drive-select" style="width: 100%; padding: 10px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; outline: none;">
-                            <option value="">Loading drives...</option>
-                        </select>
+                <div class="card settings-card">
+                    <h3>Drive Image Manager</h3>
+                    <p>Upload a custom image to match a specific drive model. The image will be displayed across the dashboard.</p>
+                    <div class="form-box">
+                        <form id="upload-form">
+                            <label for="drive-id-select">Drive Model</label>
+                            <select id="drive-id-select" class="form-select" required>
+                                <option value="">Loading drive models...</option>
+                            </select>
+                            <label class="form-label" for="image-file">Image File (.jpg)</label>
+                            <input type="file" id="image-file" class="form-input-file" accept="image/jpeg" required>
+                            
+                            <button type="submit" class="btn-submit">Upload and Apply</button>
+                        </form>
+                        <div id="upload-status" class="status-msg center"></div>
                     </div>
-                    
-                    <div>
-                        <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Select Image File</label>
-                        <input type="file" id="image-file" accept="image/*" style="width: 100%; padding: 10px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px;">
+                </div>
+
+                <div class="card settings-card">
+                    <h3>Branding</h3>
+                    <p>Customize the details printed on your PDF certificates and manage your available datacenters.</p>
+                    <div class="form-box">
+                        <label class="form-label">Company Name</label>
+                        <input type="text" id="comp-name" class="form-input-text" placeholder="Disk Hunter">
+                        
+                        <label class="form-label">Company Address</label>
+                        <input type="text" id="comp-addr" class="form-input-text" placeholder="N/A">
+                        
+                        <label class="form-label">Company Phone</label>
+                        <input type="text" id="comp-phone" class="form-input-text" placeholder="N/A">
+                        <button id="btn-save-branding" class="btn-submit mb-20">Save Text Details</button>
+
+                       <form id="logo-form" class="form-divider">
+                            <label class="form-label">Current Company Logo</label>
+                            <div class="logo-preview-box">
+                                <img id="logo-preview-img" alt="Company Logo Preview">
+                                <div id="no-logo-text" class="no-logo-text">No logo uploaded yet.</div>
+                            </div>
+
+                            <label class="form-label" for="logo-file">Upload New Logo (JPG/PNG)</label>
+                            <input type="file" id="logo-file" class="form-input-file" accept="image/png, image/jpeg" required>
+                            <button type="submit" class="btn-action btn-primary-inline w-100">Upload Logo</button>
+                        </form>
+
+                        <div id="logo-status" class="status-msg center"></div>
+
+                        <div class="form-divider">
+                            <label class="form-label">Datacenter Tags</label>
+                            <div class="action-row mt-0">
+                                <input type="text" id="new-tag-input" class="form-input-text mb-0" placeholder="e.g. DatacenterX">
+                                <button id="btn-add-tag" class="btn-action btn-primary-inline">Add</button>
+                            </div>
+                            <div id="tag-container" class="tag-container"></div>
+                        </div>
                     </div>
+                </div>
+
+                <div class="flex-col-gap-20">
                     
-                    <button type="submit" style="background: var(--primary); color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;">Upload & Apply Image</button>
-                    <div id="upload-status" style="font-size: 14px; margin-top: 5px;"></div>
-                </form>
+                    <div class="card settings-card card-warning">
+                        <h3>Data Management</h3>
+                        <p>Clear audit logs from the system.</p>
+                        <button id="btn-clear-shred-logs" class="btn-action btn-shred w-100 mb-10" style="background-color: var(--accent-red); color: white;">Clear Shredding Logs</button>
+                        <button id="btn-clear-smart-logs" class="btn-action btn-shred w-100" style="background-color: var(--accent-red); color: white;">Clear S.M.A.R.T. Logs</button>
+                        <div id="clear-logs-status" class="status-msg center mt-10"></div>
+                    </div>
+
+                    <div class="card settings-card">
+                        <h3>Safety & Protection</h3>
+                        <div class="setting-toggle-row">
+                            <input type="checkbox" id="protect-root-toggle" class="setting-checkbox checkbox-primary" checked>
+                            <label for="protect-root-toggle" class="setting-label">Protect Root Drive</label>
+                        </div>
+                        <p class="setting-desc">Hides the primary operating system drive from Shredding, SMART tests, and Partition Editor to prevent accidental data loss. It will still be visible in the Index overview.</p>
+                    </div>
+
+                    <div class="card settings-card">
+                        <h3>System Timezone</h3>
+                        <p>Set the localized timezone used for stamping Audit Logs and Erasure Certificates.</p>
+                        <div class="form-box">
+                            <select id="timezone-select" class="form-input-text mb-10">
+                                <option value="UTC">Universal Coordinated Time (UTC)</option>
+                                <option value="America/Toronto">Eastern Time (US & Canada)</option>
+                                <option value="America/Chicago">Central Time (US & Canada)</option>
+                                <option value="America/Denver">Mountain Time (US & Canada)</option>
+                                <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>
+                                <option value="Europe/London">London (GMT/BST)</option>
+                                <option value="Europe/Paris">Central Europe (CET/CEST)</option>
+                                <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+                            </select>
+                            <button id="btn-save-tz" class="btn-submit">Save Timezone</button>
+                        </div>
+                    </div>
+
+                    <div class="card settings-card">
+                        <h3>Shredding Reports</h3>
+                        <div class="setting-toggle-row">
+                            <input type="checkbox" id="pdf-report-toggle" class="setting-checkbox checkbox-primary">
+                            <label for="pdf-report-toggle" class="setting-label">Generate Certificate of Erasure</label>
+                        </div>
+                        <p class="setting-desc">When enabled, a professional PDF receipt will be generated and saved into the Audit Logs every time a wipe completes.</p>
+                    </div>
+                </div>
+
+            </div>
+            <h2 class="section-header">⚙️ Debug & Developer Tools</h2>
+            <div class="settings-grid">
+
+                <div class="card settings-card card-warning">
+                    <h3>API Debug Console</h3>
+                    <div class="setting-toggle-row">
+                        <input type="checkbox" id="debug-mode-toggle" class="setting-checkbox checkbox-warning">
+                            <label for="debug-mode-toggle" class="setting-label">Enable UI Debug Console</label>
+                    </div>
+                    <p class="setting-desc">When enabled, the shredding page will display a diagnostic terminal outputting raw Docker commands, payloads, and backend errors.</p>
+                </div>
+
+                <div class="card settings-card card-purple">
+                    <h3>Mock Wipe Pipeline</h3>
+                    <p>Instantly simulate a successful drive wipe to force the backend to generate a Certificate of Erasure and inject it into the Audit Logs.</p>
+                    <button id="btn-mock-pipeline" class="btn-action btn-purple-inline">Trigger Mock Success</button>
+                    <div id="mock-pipeline-status" class="status-msg"></div>
+                </div>
+
             </div>
         </div>
+    </div>
 
     <script src="js/common.js"></script>
     <script src="js/settings.js"></script>

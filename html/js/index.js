@@ -62,9 +62,9 @@ async function fetchDisks() {
             const pttype = pttypeMap[pttypeRaw] || pttypeRaw.toUpperCase();
             
             // Image tags with fallback to placeholder
-            const imageUrl = `images/drives/${normalizedId}.jpg`;
-            const placeholderUrl = `https://via.placeholder.com/400x300/1e293b/94a3b8.png?text=${encodeURIComponent(interfaceType)}`;
-            const imgElement = `<img src="${imageUrl}" onerror="this.onerror=null; this.src='${placeholderUrl}';" alt="Drive Image">`;
+            const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+            const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
+            const imgElement = `<img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">`;
 
             // Build the label subtitle if the drive has a root label
             const labelSubtitleHtml = disk.label ? `<div class="disk-label-subtitle">Label: ${disk.label}</div>` : '';
