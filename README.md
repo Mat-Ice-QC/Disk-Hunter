@@ -90,15 +90,12 @@ docker compose up -d --build --force-recreate
 ## Quick Start
 
 1. Clone this repository.
-2. Initialize environment configs:
-   ```bash
-   cp .env.example .env
-   ```
-3. Boot the environment using Docker Compose:
+
+2. Boot the environment using Docker Compose:
    ```bash
    docker compose up -d --build
    ```
-4. Access the web dashboard at `http://localhost` (or the configured HTTPS port).
+3. Access the web dashboard at `http://localhost` (or the configured IP : HTTPS port).
 
 ---
 
