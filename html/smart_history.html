@@ -12,26 +12,77 @@
     <div class="main-wrapper">
         <div id="header-container" class="header"></div>
         <div class="content">
-            <h2 class="title-primary">S.M.A.R.T. Test History</h2>
-            <p>A history of all S.M.A.R.T. tests initiated on this system.</p>
-            
-            <table class="history-table">
-                <thead>
-                    <tr>
-                        <th>Date & Time</th>
-                        <th>Event</th>
-                        <th>Serial Number</th>
-                        <th>Status</th>
-                        <th>Log</th>
-                    </tr>
-                </thead>
-                <tbody id="history-body">
-                    <tr id="loading-message"><td colspan="5">Loading logs...</td></tr>
-                </tbody>
-            </table>
+            <div class="card">
+                <div class="history-header">
+                    <div>
+                        <h2 class="history-title">S.M.A.R.T. Test History</h2>
+                        <p class="history-subtitle">A history of all S.M.A.R.T. tests initiated on this system.</p>
+                    </div>
+                    <div>
+                        <button id="btn-refresh" class="btn-action">Refresh</button>
+                        <button id="btn-export-csv" class="btn-action">Export CSV</button>
+                        <button id="btn-clear-history" class="btn-action red">Clear History</button>
+                        <a href="smartctl.html" class="btn-action">Back to S.M.A.R.T.</a>
+                    </div>
+                </div>
+                
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Event</th>
+                            <th>User (IP)</th>
+                            <th>Serial Number</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body">
+                        <tr id="loading-message"><td colspan="5">Loading logs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
     
+    <!-- Logs Modal -->
+    <div id="logs-modal" class="modal-overlay">
+        <div class="modal-box logs-modal-box">
+            <div class="modal-header">S.M.A.R.T. Test Logs</div>
+            <div class="modal-content history-modal-content">
+                <pre id="logs-output" class="logs-output-pre"></pre>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-close-logs" class="btn-modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modals -->
+    <div id="custom-alert-modal" class="modal-overlay">
+        <div class="modal-box alert-modal-box">
+            <div class="modal-header" id="custom-alert-title">Alert</div>
+            <div class="modal-content history-modal-content-center">
+                <p id="custom-alert-msg" class="history-modal-msg"></p>
+            </div>
+            <div class="modal-actions history-modal-actions-center">
+                <button id="btn-custom-alert-ok" class="btn-action btn-smart">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="custom-confirm-modal" class="modal-overlay">
+        <div class="modal-box confirm-modal-box">
+            <div class="modal-header" id="custom-confirm-title">Confirm Action</div>
+            <div class="modal-content history-modal-content-center">
+                <p id="custom-confirm-msg" class="history-modal-msg"></p>
+            </div>
+            <div class="modal-actions history-modal-actions-center">
+                <button id="btn-custom-confirm-yes" class="btn-action red">Yes</button>
+                <button id="btn-custom-confirm-no" class="btn-modal-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/common.js"></script>
     <script src="js/smart_history.js"></script>
 </body>

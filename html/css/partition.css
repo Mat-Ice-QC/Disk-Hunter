@@ -1,126 +1,46 @@
-.partition-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #0f172a; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
-.partition-table th { background: #1e293b; padding: 15px; text-align: left; color: var(--primary); font-size: 14px; border-bottom: 1px solid #334155; }
-.partition-table td { padding: 15px; border-bottom: 1px solid #334155; font-size: 14px; color: var(--text-main); }
-.partition-table tr:hover { background: rgba(59, 130, 246, 0.05); }
+/* html/css/partition.css */
 
+/* --- Tables --- */
+.partition-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+.partition-table th { background: rgba(255,255,255,0.05); padding: 15px; text-align: left; color: var(--primary); font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.partition-table td { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; color: var(--text-main); }
+.partition-table tr:hover { background: rgba(255,255,255,0.03); }
+
+/* --- Drive Lists --- */
 .drive-list { list-style: none; padding: 0; margin: 0; }
-.drive-list li { 
-    background-color: var(--bg-panel);
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.drive-list li:hover { background-color: #2a374a; }
-.drive-list li.selected { border-color: var(--primary); background-color: rgba(59, 130, 246, 0.05); }
+.drive-list li { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 12px; }
+.drive-list li:hover { background: rgba(255,255,255,0.05); }
+.drive-list li.selected { border-color: var(--primary); background: linear-gradient(145deg, rgba(59, 130, 246, 0.1), rgba(0,0,0,0.3)); }
+.drive-list img { width: 48px; height: 36px; object-fit: cover; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
 
-.drive-list img { 
-    width: 48px; 
-    height: 36px; 
-    object-fit: cover; 
-    border-radius: 4px; 
-    border: 1px solid #334155; 
-}
-
-.action-bar { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-.action-form { background: #0f172a; padding: 20px; border-radius: 8px; margin-top: 20px; display: none; border: 1px solid #334155; }
+/* --- Action Bars & Forms --- */
+.action-bar { display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+.action-form { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; margin-top: 20px; display: none; border: 1px solid rgba(255,255,255,0.05); }
 .action-form.active { display: block; animation: fadeIn 0.2s; }
 .form-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
 .form-row > div { flex: 1; min-width: 150px; }
 
-.btn-action {
-    background-color: #334155;
-    color: var(--text-main);
-    border: 1px solid transparent;
-    padding: 10px 15px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 13px;
-    transition: all 0.2s;
-    flex: 1;
-    text-align: center;
-}
-.btn-action:hover {
-    background-color: #475569;
-}
-.btn-action.active {
-    background-color: var(--primary);
-    color: white;
-}
+/* --- Partition Graphics --- */
+.partition-graphic { display: flex; width: 100%; height: 60px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; margin-top: 20px; position: relative; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
+.partition-block { height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: bold; border-right: 1px solid rgba(0,0,0,0.5); cursor: pointer; transition: all 0.2s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 5px; min-width: 40px; box-sizing: border-box; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+.partition-block:hover { filter: brightness(1.2); }
+.partition-block.selected { box-shadow: inset 0 0 0 3px white; z-index: 10; }
+.partition-block.free-space { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 10px, transparent 10px, transparent 20px); color: #94a3b8; text-shadow: none; }
+.partition-block.free-space.selected { box-shadow: inset 0 0 0 3px var(--primary); }
 
-.partition-graphic {
-    display: flex;
-    width: 100%;
-    height: 50px;
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-top: 20px;
-    position: relative;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
-}
+/* --- Disk Info Layout --- */
+#disk-info { display: flex; gap: 15px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; flex-wrap: wrap; font-size: 15px; color: var(--text-main); border: 1px solid rgba(255,255,255,0.05); }
+#disk-info div { background: rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+#disk-info strong { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.partition-block {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 12px;
-    font-weight: bold;
-    border-right: 1px solid rgba(0,0,0,0.3);
-    cursor: pointer;
-    transition: all 0.2s;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 5px;
-}
-.partition-block:hover {
-    filter: brightness(1.2);
-}
-.partition-block.selected {
-    box-shadow: inset 0 0 0 3px white;
-    z-index: 10;
-}
-.partition-block.free-space {
-    background: repeating-linear-gradient(
-        45deg,
-        #1e293b,
-        #1e293b 10px,
-        #0f172a 10px,
-        #0f172a 20px
-    );
-    color: #94a3b8;
-}
-.partition-block.free-space.selected {
-    box-shadow: inset 0 0 0 3px var(--primary);
-}
+/* --- Form Elements --- */
+.shred-label { display: block; color: var(--text-muted); margin-bottom: 8px; }
+.shred-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; }
+.shred-select:focus { border-color: var(--primary); outline: none; }
 
-#disk-info {
-    display: flex;
-    gap: 15px;
-    background: #0f172a;
-    padding: 15px;
-    border-radius: 8px;
-    flex-wrap: wrap;
-    font-size: 14px;
-    color: var(--text-main);
-    border: 1px solid #334155;
-}
-#disk-info div {
-    background: #1e293b;
-    padding: 6px 12px;
-    border-radius: 4px;
-    border: 1px solid #334155;
-}
-#disk-info strong {
-    color: var(--text-muted);
-}
+/* --- Buttons & Cards --- */
+.btn-shred { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--primary), #2563eb); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2); }
+.btn-shred:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(59, 130, 246, 0.4); }
+
+.drive-card { cursor: pointer; }
+.drive-card:hover { background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 1)); border-color: rgba(59, 130, 246, 0.5); }

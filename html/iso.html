@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Hunter | ISO Tools</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/settings.css">
+    <link rel="stylesheet" href="css/iso.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,11 +15,44 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>ISO Downloader & Writer</h2>
-                <p>Fetch OS images directly from the web and flash them securely to connected USB drives using standard tools like <code>dd</code>.</p>
-                <div id="iso-ui-container">
+            <h2 class="title-main">ISO Downloader & Writer</h2>
+            
+            <div class="settings-grid">
+                
+                <div class="card settings-card">
+                    <h3>Download OS Image</h3>
+                    <p>Fetch OS images directly from the web.</p>
+                    <div class="form-box">
+                        <label class="form-label">Image URL</label>
+                        <input type="text" id="iso-url" class="form-input-text" placeholder="https://releases.ubuntu.com/.../ubuntu-24.04.iso">
+                        
+                        <label class="form-label">Save As Filename</label>
+                        <input type="text" id="iso-filename" class="form-input-text" placeholder="ubuntu-24.04.iso">
+                        
+                        <button id="btn-download-iso" class="btn-submit">Start Download</button>
                     </div>
+                    <div id="download-status-container" class="mt-15"></div>
+                </div>
+
+                <div class="card settings-card card-warning">
+                    <h3>Write Image to USB / Disk</h3>
+                    <p>Securely flash images to connected drives.</p>
+                    <div class="form-box">
+                        <label class="form-label">Select Image</label>
+                        <select id="select-iso" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        
+                        <label class="form-label" style="color: var(--accent-red);">Select Target Disk (WARNING: ALL DATA WILL BE ERASED)</label>
+                        <select id="select-disk" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        
+                        <button id="btn-write-iso" class="btn-submit" style="background-color: var(--accent-red);">Write Image</button>
+                    </div>
+                    <div id="write-status-container" class="mt-15"></div>
+                </div>
+
             </div>
         </div>
     </div>

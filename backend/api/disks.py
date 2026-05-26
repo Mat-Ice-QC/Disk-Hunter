@@ -6,8 +6,17 @@ import httpx
 
 router = APIRouter()
 
-def parse_smart_attributes(output):
-    """Parses smartctl -a output for specific attributes."""
+def parse_smart_attributes(output: str) -> dict:
+    """
+    Parses the raw text output of 'smartctl -a' into a structured dictionary.
+    
+    Args:
+        output (str): The stdout from the smartctl command.
+        
+    Returns:
+        dict: A structured dictionary containing overall health, reallocated sectors,
+              pending sectors, and a list of detailed S.M.A.R.T. attributes.
+    """
     if not output:
         return {"health": "Not Supported", "reallocated_sectors": 0, "pending_sectors": 0, "attributes": []}
     
@@ -72,17 +81,22 @@ def parse_smart_attributes(output):
 
 @router.get("/api/disks")
 async def get_disks(exclude_root: bool = False):
+    """
+    Retrieves all connected block storage devices using the 'lsblk' command.
+    Optionally attempts to filter out the root operating system drive to prevent accidental modification.
+    """
     try:
-        cmd = ["lsblk", "-b", "-J", "-o", "NAME,PATH,SIZE,TYPE,FSTYPE,PTTYPE,TRAN,MODEL,SERIAL,MOUNTPOINT,LABEL,PARTTYPENAME,FSVER,VENDOR"]
+        cmd = ["lsblk", "-b", "-J", "-o", "NAME,PATH,SIZE,TYPE,FSTYPE,PTTYPE,TRAN,MODEL,SERIAL,MOUNTPOINT,LABEL,PARTTYPENAME,FSVER,VENDOR,RO"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
         
+        # Filter out loopback devices (like snap mounts) and ensure it's an actual disk
         disks = [d for d in data.get('blockdevices', []) if d.get('type') == 'disk' and not d.get('name', '').startswith('loop') and d.get('size', 0) > 0]
         
         if exclude_root:
             root_drive = None
             try:
-                # Find device for /app/data which is mounted from host
+                # Heuristic 1: Find the underlying device for /app/data which is mounted from the host OS
                 df_res = subprocess.run(["df", "/app/data", "--output=source"], capture_output=True, text=True)
                 lines = df_res.stdout.strip().split('\n')
                 if len(lines) > 1:
@@ -94,7 +108,7 @@ async def get_disks(exclude_root: bool = False):
                     elif dev_path.startswith("/dev/"):
                         root_drive = dev_path
                 
-                # Also try /etc/resolv.conf as fallback
+                # Heuristic 2: If the first check fails (e.g., using overlayfs), try finding the mount for /etc/resolv.conf
                 if not root_drive or root_drive == "overlay":
                     df_res = subprocess.run(["df", "/etc/resolv.conf", "--output=source"], capture_output=True, text=True)
                     lines = df_res.stdout.strip().split('\n')

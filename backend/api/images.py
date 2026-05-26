@@ -1,5 +1,6 @@
 import os
 import shutil
+import re
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 from fastapi.responses import FileResponse
 from .config import DRIVES_DIR, LOGO_PATH
@@ -23,33 +24,34 @@ def get_drive_image(filename: str):
     if os.path.exists(exact_file_path):
         return FileResponse(exact_file_path)
 
-    best_general_match_name = None
-    
-    # 2. Find the longest available image name that is a substring of the requested name
-    # (e.g., 'kingston_sa400s3' for 'ata_kingston_sa400s3')
-    for img_base in available_images:
-        if img_base in requested_base and img_base != requested_base: # Exclude exact match, already handled
-            if best_general_match_name is None or len(img_base) > len(best_general_match_name):
-                best_general_match_name = img_base
-    
-    if best_general_match_name:
-        file_path = os.path.join(DRIVES_DIR, f"{best_general_match_name}.jpg")
-        if os.path.exists(file_path): # Double-check existence
-            return FileResponse(file_path)
+    def tokenize(text: str) -> set:
+        return set(re.sub(r'[^a-z0-9]', ' ', text.lower()).split())
 
-    best_specific_match_name = None
+    req_tokens = tokenize(requested_base)
     
-    # 3. Find the shortest available image name that contains the requested name as a substring
-    # (e.g., 'verbatim_store_n_go_drive' for 'verbatim_store_n_go')
+    best_match_name = None
+    best_score = 0
+    
+    # 2. Token-based scoring match
     for img_base in available_images:
-        if requested_base in img_base and img_base != requested_base: # Exclude exact match, already handled
-            # We want the shortest 'img_base' that contains 'requested_base'
-            if best_specific_match_name is None or len(img_base) < len(best_specific_match_name):
-                best_specific_match_name = img_base
-    
-    if best_specific_match_name:
-        file_path = os.path.join(DRIVES_DIR, f"{best_specific_match_name}.jpg")
-        if os.path.exists(file_path): # Final double-check
+        img_tokens = tokenize(img_base)
+        
+        # Calculate intersection of tokens
+        intersection = req_tokens.intersection(img_tokens)
+        score = len(intersection)
+        
+        # Penalize if the pool image has specific tokens NOT present in the requested drive
+        # We want the matched image to be a generic parent or exact match, not a different specific sibling.
+        extra_tokens = len(img_tokens - req_tokens)
+        final_score = score - (extra_tokens * 0.5)
+        
+        if final_score > best_score and final_score > 0:
+            best_score = final_score
+            best_match_name = img_base
+
+    if best_match_name:
+        file_path = os.path.join(DRIVES_DIR, f"{best_match_name}.jpg")
+        if os.path.exists(file_path):
             return FileResponse(file_path)
 
     # If no image is found after all attempts
@@ -85,5 +87,57 @@ async def upload_logo(file: UploadFile = File(...)):
         with open(LOGO_PATH, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         return {"status": "success", "message": "Company logo updated successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+from typing import List
+
+POOL_DIR = os.path.join(os.path.dirname(DRIVES_DIR), 'pool')
+os.makedirs(POOL_DIR, exist_ok=True)
+
+@router.post("/api/images/pool/upload")
+async def upload_pool_images(files: List[UploadFile] = File(...)):
+    try:
+        for file in files:
+            if file.content_type.startswith('image/'):
+                safe_name = os.path.basename(file.filename)
+                with open(os.path.join(POOL_DIR, safe_name), "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.get("/api/images/pool")
+def list_pool_images():
+    images = set()
+    if os.path.exists(POOL_DIR):
+        images.update([f for f in os.listdir(POOL_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))])
+    if os.path.exists(DRIVES_DIR):
+        images.update([f for f in os.listdir(DRIVES_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))])
+    return {"images": list(images)}
+
+@router.get("/api/images/pool/{filename}")
+def get_pool_image(filename: str):
+    pool_path = os.path.join(POOL_DIR, filename)
+    drives_path = os.path.join(DRIVES_DIR, filename)
+    if os.path.exists(pool_path):
+        return FileResponse(pool_path)
+    if os.path.exists(drives_path):
+        return FileResponse(drives_path)
+    raise HTTPException(status_code=404, detail="Image not found")
+    
+@router.post("/api/images/assign")
+async def assign_drive_image(drive_id: str = Form(...), pool_filename: str = Form(...)):
+    try:
+        source_path = os.path.join(POOL_DIR, os.path.basename(pool_filename))
+        if not os.path.exists(source_path):
+            source_path = os.path.join(DRIVES_DIR, os.path.basename(pool_filename))
+        if not os.path.exists(source_path):
+            raise HTTPException(status_code=404, detail="Pool image not found")
+            
+        safe_drive_id = os.path.basename(drive_id)
+        dest_path = os.path.join(DRIVES_DIR, f"{safe_drive_id}.jpg")
+        shutil.copy(source_path, dest_path)
+        return {"status": "success"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

@@ -1,0 +1,42 @@
+{
+    "index.html": [
+        {
+            "name": "lsblk",
+            "url": "https://man7.org/linux/man-pages/man8/lsblk.8.html"
+        },
+        {
+            "name": "smartmontools",
+            "url": "https://www.smartmontools.org/"
+        }
+    ],
+    "shredding.html": [
+        {
+            "name": "nwipe",
+            "url": "https://github.com/martijnvanbrummelen/nwipe"
+        }
+    ],
+    "smartctl.html": [
+        {
+            "name": "smartmontools",
+            "url": "https://www.smartmontools.org/"
+        }
+    ],
+    "partition.html": [
+        {
+            "name": "parted",
+            "url": "https://www.gnu.org/software/parted/"
+        }
+    ],
+    "speedtest.html": [
+        {
+            "name": "fio",
+            "url": "https://fio.readthedocs.io/en/latest/"
+        }
+    ],
+    "iso.html": [
+        {
+            "name": "dd",
+            "url": "https://man7.org/linux/man-pages/man1/dd.1.html"
+        }
+    ]
+}

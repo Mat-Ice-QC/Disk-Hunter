@@ -30,6 +30,20 @@ def get_local_time(tz_string="UTC"):
         # Fallback to UTC if the string is invalid
         return datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
 
+import os
+
 @router.get("/api/system-info")
 def system_info():
     return {"hostname": socket.gethostname(), "ip": get_ip(), "temperature": get_temp()}
+
+@router.get("/api/system/features")
+def system_features():
+    return {
+        "ENABLE_SHREDDER": os.getenv("ENABLE_SHREDDER", "true").lower() == "true",
+        "ENABLE_SPEEDTEST": os.getenv("ENABLE_SPEEDTEST", "true").lower() == "true",
+        "ENABLE_ISOWRITER": os.getenv("ENABLE_ISOWRITER", "true").lower() == "true",
+        "ENABLE_SMARTCTL": os.getenv("ENABLE_SMARTCTL", "true").lower() == "true",
+        "ENABLE_DATA_MANAGEMENT": os.getenv("ENABLE_DATA_MANAGEMENT", "true").lower() == "true",
+        "ENABLE_NETWORK_SHARE": os.getenv("ENABLE_NETWORK_SHARE", "true").lower() == "true",
+        "ENABLE_DELETE_HISTORY": os.getenv("ENABLE_DELETE_HISTORY", "true").lower() == "true",
+    }

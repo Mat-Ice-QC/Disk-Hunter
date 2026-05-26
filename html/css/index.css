@@ -1,0 +1,488 @@
+/* html/css/index.css */
+
+/* --- Layout & Container --- */
+#disk-list-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+}
+
+/* --- Premium Drive Card --- */
+.drive-card {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.65));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 24px;
+    margin-bottom: 0; /* Reset global style margin */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.4);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.4s;
+    position: relative;
+    overflow: hidden;
+}
+
+.drive-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+    pointer-events: none;
+}
+
+/* --- Card Interface Glows --- */
+.drive-card.glow-nvme:hover {
+    transform: translateY(-6px);
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 
+                0 0 25px 0 rgba(59, 130, 246, 0.15);
+}
+
+.drive-card.glow-sata:hover {
+    transform: translateY(-6px);
+    border-color: rgba(245, 158, 11, 0.45);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 
+                0 0 25px 0 rgba(245, 158, 11, 0.15);
+}
+
+.drive-card.glow-usb:hover {
+    transform: translateY(-6px);
+    border-color: rgba(168, 85, 247, 0.45);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 
+                0 0 25px 0 rgba(168, 85, 247, 0.15);
+}
+
+/* --- Header Layout --- */
+.drive-header {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+/* --- CSS Drive Illustration Wrapper --- */
+.drive-illustration {
+    width: 130px;
+    height: 110px;
+    background: rgba(10, 15, 26, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+    flex-shrink: 0;
+}
+
+/* --- Vector Elements --- */
+.drive-svg {
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* LED Indicator Animation */
+.led-glow {
+    animation: led-blink 2s infinite alternate ease-in-out;
+}
+
+@keyframes led-blink {
+    0% { opacity: 0.35; filter: drop-shadow(0 0 1px currentColor); }
+    100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
+}
+
+.led-normal { color: #3b82f6; fill: currentColor; }
+.led-warning { color: #f59e0b; fill: currentColor; }
+.led-danger { color: #ef4444; fill: currentColor; animation: led-fast-blink 0.6s infinite alternate ease-in-out; }
+.led-ok { color: #10b981; fill: currentColor; }
+
+@keyframes led-fast-blink {
+    0% { opacity: 0.2; }
+    100% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); }
+}
+
+/* --- Info Details --- */
+.drive-info {
+    flex: 1;
+    min-width: 0; /* Enable truncation in flex children */
+}
+
+.drive-info h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    word-break: break-word;
+}
+
+.drive-info h3 .drive-model-text {
+    color: var(--text-main);
+    line-height: 1.25;
+}
+
+.drive-info h3 .serial-number {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    background: rgba(0,0,0,0.25);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+    width: fit-content;
+    margin-top: 2px;
+}
+
+.disk-label-subtitle {
+    color: #fbbf24;
+    font-size: 12.5px;
+    margin-bottom: 6px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.badge-group {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0;
+    flex-wrap: wrap;
+}
+
+.badge {
+    background: rgba(0, 0, 0, 0.35);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.badge.dev-path {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.25);
+    background: rgba(74, 222, 128, 0.05);
+}
+
+.badge.interface {
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.25);
+    background: rgba(96, 165, 250, 0.05);
+}
+
+.badge.ptable {
+    color: #c084fc;
+    border-color: rgba(192, 132, 252, 0.25);
+    background: rgba(192, 132, 252, 0.05);
+}
+
+.badge.read-only {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.25);
+    background: rgba(248, 113, 113, 0.05);
+    font-weight: bold;
+}
+
+/* S.M.A.R.T Badge status */
+.badge-smart {
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 12px;
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-transform: uppercase;
+}
+
+.badge-smart.checking {
+    color: var(--text-muted);
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.badge-smart.passed {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.25);
+    background: rgba(52, 211, 153, 0.05);
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.05) inset;
+}
+
+.badge-smart.failing {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.35);
+    background: rgba(248, 113, 113, 0.08);
+    box-shadow: 0 0 10px rgba(248, 113, 113, 0.1) inset;
+    animation: glow-red-pulse 2s infinite alternate ease-in-out;
+}
+
+.badge-smart.unsupported {
+    color: var(--text-muted);
+    border-color: rgba(255,255,255,0.05);
+    background: rgba(0,0,0,0.15);
+}
+
+@keyframes glow-red-pulse {
+    0% { filter: drop-shadow(0 0 1px rgba(248, 113, 113, 0.2)); }
+    100% { filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.6)); }
+}
+
+.capacity-text {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.capacity-text strong {
+    color: var(--text-main);
+    font-size: 15px;
+}
+
+/* --- Operation Status Banner --- */
+.active-op-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    animation: op-border-pulse 1.5s infinite alternate ease-in-out;
+    border: 1px solid transparent;
+}
+
+.active-op-banner.wipe {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+}
+
+.active-op-banner.smart {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.25);
+    color: #93c5fd;
+}
+
+.active-op-banner.speedtest {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fde047;
+}
+
+@keyframes op-border-pulse {
+    0% { box-shadow: 0 0 2px rgba(255,255,255,0.05); }
+    100% { box-shadow: 0 0 12px rgba(255,255,255,0.1); }
+}
+
+.spinner-mini {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- Partition Area --- */
+.partition-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.partition-section h4 {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.partition-container {
+    margin-top: 2px;
+}
+
+.partition-bar {
+    display: flex;
+    height: 32px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(10, 15, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    position: relative;
+}
+
+.partition-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 45%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), transparent);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.partition {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-right: 1px solid rgba(0, 0, 0, 0.35);
+    cursor: help;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    z-index: 1;
+}
+
+.partition:last-child {
+    border-right: none;
+}
+
+.partition:hover {
+    filter: brightness(1.2) contrast(1.1);
+    box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.25);
+    transform: scaleY(1.08);
+    z-index: 2;
+}
+
+/* Partition Colors with premium gradients */
+.part-efi {
+    background: linear-gradient(135deg, #fbbf24, #d97706);
+    color: #0b1329;
+    text-shadow: none;
+}
+
+.part-ext4 {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+
+.part-ntfs {
+    background: linear-gradient(135deg, #8b5cf6, #5b21b6);
+}
+
+.part-swap {
+    background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
+.part-btrfs {
+    background: linear-gradient(135deg, #10b981, #047857);
+}
+
+.part-free {
+    background-color: rgba(30, 41, 59, 0.2);
+    color: var(--text-muted);
+    text-shadow: none;
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.02) 0px,
+        rgba(255, 255, 255, 0.02) 2px,
+        transparent 2px,
+        transparent 10px
+    );
+    border-right: none;
+}
+
+.part-unknown {
+    background: linear-gradient(135deg, #64748b, #334155);
+    color: #cbd5e1;
+}
+
+/* --- Action Shortcuts Row --- */
+.drive-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 16px;
+    flex-wrap: wrap;
+}
+
+.btn-shortcut {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 14px;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+}
+
+.btn-shortcut:hover {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #60a5fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.btn-shortcut.red:hover {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #f87171;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.1);
+}
+
+.btn-shortcut.green:hover {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #34d399;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+}
+
+.btn-shortcut.purple:hover {
+    background: rgba(168, 85, 247, 0.08);
+    border-color: rgba(168, 85, 247, 0.35);
+    color: #c084fc;
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.1);
+}
+
+.btn-shortcut svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
