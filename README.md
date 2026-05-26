@@ -6,6 +6,38 @@ Disk Hunter provides a sleek, modern glassmorphic dashboard interface for admini
 
 ---
 
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="screenshots/smarttest.png" alt="SMART Test" width="400"/><br>
+        <b>SMART Test</b>
+      </td>
+      <td align="center">
+        <img src="screenshots/diskshredding.png" alt="Disk Shredding" width="400"/><br>
+        <b>Disk Shredding</b>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <img src="screenshots/partitioneditor.png" alt="Partition Editor" width="400"/><br>
+        <b>Partition Editor</b>
+      </td>
+      <td align="center">
+        <img src="screenshots/speedtest.png" alt="Speed Test" width="400"/><br>
+        <b>Speed Test</b>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" colspan="2">
+        <img src="screenshots/isomodule.png" alt="ISO Module" width="400"/><br>
+        <b>ISO Module</b>
+      </td>
+    </tr>
+  </table>
+</div>
+
 ## Key Features
 
 - **Interactive Dashboard:** Instantly view connected drives, partition structures, device health, and raw hardware specs in a unified grid.
@@ -107,7 +139,7 @@ docker compose up -d --build --force-recreate
 - **Automated Report Emailing:** SMTP mailing service to dispatch PDF erasure certificates automatically.
 - **Bulk Firmware Updates:** Automate deploying vendor-specific firmware images across uniform drive batches.
 - **Disk Overview** Fix the fetching of smartdata always being called every refresh 
-- **Natework share / Disk browsing** Maybe make the module for drive browsing 
+- **Netework share / Disk browsing** Maybe make the module for drive browsing 
 - **Drive images fix** add default images for nvme / usb / ssd / hdd / sd...
 - **Security** do an audit on the whole code base 
 - **Pin package Versions** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
