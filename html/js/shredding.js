@@ -1,15 +1,36 @@
+/* html/js/shredding.js */
+
 let selectedDrives = [];
 let availableDisksData = [];
 let refreshInterval;
-let previousDiskStateHash = ""; // NEW: Tracks structural changes to prevent flickering
+let previousDiskStateHash = ""; 
+
+document.addEventListener('dh-language-changed', () => {
+    window.applyLocalization();
+    updateWipeMethodsSelect();
+    if (currentDisks && currentWipeStatus) {
+        updateShreddingUI();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
-    fetchDrivesAndStatus();
-    refreshInterval = setInterval(fetchDrivesAndStatus, 5000);
-
     document.getElementById('btn-initiate-wipe').addEventListener('click', showConfirmationModal);
     document.getElementById('btn-cancel').addEventListener('click', hideModal);
     document.getElementById('btn-confirm').addEventListener('click', executeWipe);
+    window.applyLocalization();
+});
+
+let currentDisks = null;
+let currentWipeStatus = null;
+
+document.addEventListener('ws-disks', (e) => {
+    currentDisks = e.detail;
+    updateShreddingUI();
+});
+
+document.addEventListener('ws-wipe_status', (e) => {
+    currentWipeStatus = e.detail;
+    updateShreddingUI();
 });
 
 function formatBytes(bytes, decimals = 1) {
@@ -21,46 +42,114 @@ function formatBytes(bytes, decimals = 1) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-async function fetchDrivesAndStatus() {
-    try {
-        const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
-        const [disksRes, statusRes] = await Promise.all([
-            fetch(`/api/disks?exclude_root=${protectRoot}`),
-            fetch('/api/wipe-status')
-        ]);
+function updateWipeMethodsSelect() {
+    const select = document.getElementById('wipe-method');
+    if (!select) return;
 
-        const diskData = await disksRes.json();
-        const statusData = await statusRes.json();
+    const allSelectedAreNvme = selectedDrives.length > 0 && selectedDrives.every(path => {
+        const disk = availableDisksData.find(d => d.path === path);
+        if (!disk) return false;
+        const tran = (disk.tran || '').toLowerCase();
+        const name = (disk.name || '').toLowerCase();
+        return tran === 'nvme' || name.includes('nvme');
+    });
 
-        if (diskData.status !== 'success') {
-            document.getElementById('shred-list-container').innerHTML = `<p style="color: red;">Error: ${diskData.message}</p>`;
-            return;
+    const allSelectedAreSata = selectedDrives.length > 0 && selectedDrives.every(path => {
+        const disk = availableDisksData.find(d => d.path === path);
+        if (!disk) return false;
+        const tran = (disk.tran || '').toLowerCase();
+        const name = (disk.name || '').toLowerCase();
+        return tran === 'sata' || name.startsWith('sd');
+    });
+
+    const hasNvmeUser = !!select.querySelector('option[value="nvme-user"]');
+    const hasAtaSecure = !!select.querySelector('option[value="ata-secure"]');
+    
+    // 1. Handle NVMe Options
+    if (allSelectedAreNvme) {
+        if (!hasNvmeUser) {
+            const optUser = document.createElement('option');
+            optUser.value = 'nvme-user';
+            optUser.setAttribute('data-i18n', 'method_nvme_user');
+            optUser.innerText = window.translate('method_nvme_user', 'NVMe Secure Erase (User Data Format)');
+            
+            const optCrypto = document.createElement('option');
+            optCrypto.value = 'nvme-crypto';
+            optCrypto.setAttribute('data-i18n', 'method_nvme_crypto');
+            optCrypto.innerText = window.translate('method_nvme_crypto', 'NVMe Secure Erase (Cryptographic Format)');
+            
+            select.appendChild(optUser);
+            select.appendChild(optCrypto);
         }
-
-        const wipingJobs = statusData.wiping || [];
-        availableDisksData = diskData.disks;
-
-        // Create a unique fingerprint of the current drive state (Ignoring the rapidly changing log text)
-        const currentStateHash = diskData.disks.map(d => {
-            const isWiping = wipingJobs.some(job => job.drive === d.name);
-            return `${d.path}:${isWiping}`;
-        }).join('|');
-
-        if (currentStateHash !== previousDiskStateHash) {
-            // Structural change detected! (Drive added/removed or wipe started/stopped)
-            rebuildUI(diskData.disks, wipingJobs);
-            previousDiskStateHash = currentStateHash;
-        } else {
-            // No structural changes. Just silently update the live terminal logs to stop the flicker!
-            updateLiveLogs(wipingJobs);
+    } else {
+        if (hasNvmeUser) {
+            if (select.value === 'nvme-user' || select.value === 'nvme-crypto') {
+                select.value = 'dodshort';
+                select.dispatchEvent(new Event('change'));
+            }
+            select.querySelector('option[value="nvme-user"]')?.remove();
+            select.querySelector('option[value="nvme-crypto"]')?.remove();
         }
+    }
 
-    } catch (error) {
-        console.error("Failed to fetch drives:", error);
+    // 2. Handle ATA Options
+    if (allSelectedAreSata) {
+        if (!hasAtaSecure) {
+            const optAtaSec = document.createElement('option');
+            optAtaSec.value = 'ata-secure';
+            optAtaSec.setAttribute('data-i18n', 'method_ata_secure');
+            optAtaSec.innerText = window.translate('method_ata_secure', 'ATA Secure Erase (User Data Format)');
+            
+            const optAtaEnh = document.createElement('option');
+            optAtaEnh.value = 'ata-enhanced';
+            optAtaEnh.setAttribute('data-i18n', 'method_ata_enhanced');
+            optAtaEnh.innerText = window.translate('method_ata_enhanced', 'ATA Enhanced Secure Erase (Cryptographic Format)');
+            
+            select.appendChild(optAtaSec);
+            select.appendChild(optAtaEnh);
+        }
+    } else {
+        if (hasAtaSecure) {
+            if (select.value === 'ata-secure' || select.value === 'ata-enhanced') {
+                select.value = 'dodshort';
+                select.dispatchEvent(new Event('change'));
+            }
+            select.querySelector('option[value="ata-secure"]')?.remove();
+            select.querySelector('option[value="ata-enhanced"]')?.remove();
+        }
     }
 }
 
-// Function to smoothly update the text inside the terminal without redrawing the whole card
+function updateShreddingUI() {
+    if (!currentDisks || !currentWipeStatus) return;
+    
+    const diskData = currentDisks;
+    const statusData = currentWipeStatus;
+
+    if (diskData.status !== 'success') {
+        document.getElementById('shred-list-container').innerHTML = `<p style="color: red;">Error: ${diskData.message}</p>`;
+        return;
+    }
+
+    const wipingJobs = statusData.wiping || [];
+    availableDisksData = diskData.disks;
+
+    // Check if selected value matches any removed NVMe items after state mutation
+    updateWipeMethodsSelect();
+
+    const currentStateHash = diskData.disks.map(d => {
+        const isWiping = wipingJobs.some(job => job.drive === d.name);
+        return `${d.path}:${isWiping}`;
+    }).join('|');
+
+    if (currentStateHash !== previousDiskStateHash) {
+        rebuildUI(diskData.disks, wipingJobs);
+        previousDiskStateHash = currentStateHash;
+    } else {
+        updateLiveLogs(wipingJobs);
+    }
+}
+
 function updateLiveLogs(wipingJobs) {
     wipingJobs.forEach(job => {
         const logElement = document.getElementById(`log-${job.drive}`);
@@ -71,7 +160,6 @@ function updateLiveLogs(wipingJobs) {
     });
 }
 
-// Function to completely rebuild the UI cards (Only called when absolutely necessary)
 function rebuildUI(disks, wipingJobs) {
     const availContainer = document.getElementById('shred-list-container');
     const activeContainer = document.getElementById('active-list-container');
@@ -101,7 +189,6 @@ function rebuildUI(disks, wipingJobs) {
         const activeJob = wipingJobs.find(job => job.drive === driveName);
 
         if (activeJob) {
-            // ACTIVE WIPE CARD
             card.className = 'drive-card wiping-card';
             card.innerHTML = `
                 <div class="drive-header" style="justify-content: space-between; width: 100%;">
@@ -110,22 +197,21 @@ function rebuildUI(disks, wipingJobs) {
                             <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
                         </div>
                         <div class="drive-info">
-                            <h3 style="font-size: 18px; color: var(--accent-red); margin-bottom: 5px;">${fullName} <span class="badge" style="background: var(--accent-red); color: white; margin-left: 10px;">WIPING IN PROGRESS</span></h3>
+                            <h3 style="font-size: 18px; color: var(--accent-red); margin-bottom: 5px;">${fullName} <span class="badge" style="background: var(--accent-red); color: white; margin-left: 10px;">${window.translate('wiping', 'Wiping').toUpperCase()}</span></h3>
                             <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
-                                <strong>Path:</strong> ${disk.path} | <strong>Size:</strong> ${formatBytes(diskSize)} | <strong>S/N:</strong> ${serial}
+                                <strong>${window.translate('path', 'Path')}:</strong> ${disk.path} | <strong>${window.translate('size', 'Size')}:</strong> ${formatBytes(diskSize)} | <strong>S/N:</strong> ${serial}
                             </p>
                             <div id="log-${driveName}" style="background: #000; color: #10b981; font-family: monospace; font-size: 12px; padding: 8px 10px; border-radius: 4px; width: 100%; max-width: 550px; white-space: pre-wrap; word-break: break-word; border: 1px solid #334155; line-height: 1.4; margin-top: 8px;" title="${activeJob.log.replace(/"/g, '&quot;')}"></div>
                         </div>
                     </div>
                     <div style="padding-left: 15px;">
-                        <button onclick="stopWipeJob('${activeJob.container}')" style="background: transparent; color: var(--accent-red); border: 1px solid var(--accent-red); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">Emergency Stop</button>
+                        <button onclick="stopWipeJob('${activeJob.container}')" style="background: transparent; color: var(--accent-red); border: 1px solid var(--accent-red); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">${window.translate('stop_wipe', 'Stop Wipe')}</button>
                     </div>
                 </div>
             `;
             activeContainer.appendChild(card);
             activeCount++;
         } else {
-            // AVAILABLE TARGET CARD
             card.className = 'drive-card';
             const isChecked = selectedDrives.includes(disk.path) ? 'checked' : '';
             if (isChecked) card.classList.add('selected');
@@ -141,8 +227,8 @@ function rebuildUI(disks, wipingJobs) {
                     <div class="drive-info">
                         <h3 style="font-size: 18px;">${fullName}</h3>
                         <p style="font-size: 13px; color: var(--text-muted);">
-                            <strong>Path:</strong> <span style="color: var(--accent-red);">${disk.path}</span> | 
-                            <strong>Size:</strong> ${formatBytes(diskSize)} | 
+                            <strong>${window.translate('path', 'Path')}:</strong> <span style="color: var(--accent-red);">${disk.path}</span> | 
+                            <strong>${window.translate('size', 'Size')}:</strong> ${formatBytes(diskSize)} | 
                             <strong>S/N:</strong> ${serial}
                         </p>
                     </div>
@@ -162,6 +248,7 @@ function rebuildUI(disks, wipingJobs) {
                     selectedDrives = selectedDrives.filter(p => p !== disk.path);
                     card.classList.remove('selected');
                 }
+                updateWipeMethodsSelect();
             });
 
             availContainer.appendChild(card);
@@ -170,39 +257,41 @@ function rebuildUI(disks, wipingJobs) {
     });
 
     activeSection.style.display = activeCount > 0 ? 'block' : 'none';
-    if (availableCount === 0) availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives to wipe.</p>';
+    if (availableCount === 0) availContainer.innerHTML = `<p style="color: var(--text-muted);">${window.translate('no_avail_drives', 'No available drives to wipe.')}</p>`;
+    window.applyLocalization();
 }
 
-// Global function for the Emergency Stop button
 window.stopWipeJob = async function(containerName) {
-    if(!confirm("⚠️ DANGER: Are you sure you want to stop this wipe?\n\nThe process will stop gracefully and the container will be removed in 2 minutes.")) return;
+    const confirmMsg = window.translate('emergency_stop_confirm', "DANGER: Are you sure you want to stop this wipe?\n\nThe process will stop gracefully and the container will be removed in 2 minutes.");
+    const confirmTitle = window.translate('emergency_stop_title', "Confirm Emergency Stop");
     
-    try {
-        const response = await fetch('/api/shred/stop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ container_name: containerName }) 
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            fetchDrivesAndStatus(); // Instantly refresh UI
-        } else {
-            alert("Error stopping wipe: " + result.message);
+    customConfirm(confirmMsg, async () => {
+        try {
+            const response = await fetch('/api/shred/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_name: containerName }) 
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                // Wait for WebSocket event
+            } else {
+                customAlert("Error stopping wipe: " + result.message);
+            }
+        } catch (error) {
+            console.error("Network error while trying to stop the container:", error);
         }
-    } catch (error) {
-        console.error("Network error while trying to stop the container:", error);
-    }
+    }, confirmTitle);
 };
 
 function showConfirmationModal() {
     if (selectedDrives.length === 0) {
-        alert("Please select at least one available drive to wipe.");
+        customAlert("Please select at least one available drive to wipe.");
         return;
     }
     console.log("Showing confirmation modal. Selected drives:", selectedDrives);
-    clearInterval(refreshInterval);
     const modalList = document.getElementById('modal-drive-list');
     modalList.innerHTML = '';
 
@@ -226,17 +315,17 @@ function showConfirmationModal() {
             extraInputs = `
                 <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 150px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">Datacenter</label>
+                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('datacenter', 'Datacenter')}</label>
                         <select id="dc-${disk.path}" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                             ${options}
                         </select>
                     </div>
                     <div style="flex: 1; min-width: 150px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">Server Name</label>
+                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('server_name', 'Server Name')}</label>
                         <input type="text" id="srv-${disk.path}" placeholder="Optional" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                     </div>
                     <div style="flex: 1; min-width: 150px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">Inventory ID</label>
+                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('inventory_id', 'Inventory ID')}</label>
                         <input type="text" id="inv-${disk.path}" placeholder="Optional" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                     </div>
                 </div>
@@ -257,14 +346,12 @@ function showConfirmationModal() {
         `;
     });
     document.getElementById('shred-modal').classList.add('active');
+    window.applyLocalization();
 }
 
 function hideModal() {
     document.getElementById('shred-modal').classList.remove('active');
-    refreshInterval = setInterval(fetchDrivesAndStatus, 5000);
 }
-
-// The Main Execution Function
 
 async function executeWipe() {
     const method = document.getElementById('wipe-method').value;
@@ -286,7 +373,6 @@ async function executeWipe() {
     btn.disabled = true;
 
     try {
-        // Build the complex drives array, now including the per-disk Datacenter!
         let driveObjects = selectedDrives.map(path => {
             const srvInput = document.getElementById(`srv-${path}`);
             const invInput = document.getElementById(`inv-${path}`);
@@ -328,18 +414,17 @@ async function executeWipe() {
             if (isDebug) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
             selectedDrives = [];
             hideModal();
-            fetchDrivesAndStatus(); 
         } else {
             if (isDebug) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message}<br>`;
-            alert("Error: " + result.message);
+            customAlert("Error: " + result.message);
             hideModal();
         }
     } catch (error) {
         if (isDebug) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${error}<br>`;
-        alert("Network error.");
+        customAlert("Network error.");
         hideModal();
     } finally {
-        btn.innerText = "I Understand, Destroy Data";
+        btn.innerText = window.translate('btn_confirm_wipe', "I Understand, Destroy Data");
         btn.disabled = false;
     }
 }

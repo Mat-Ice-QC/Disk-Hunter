@@ -3,9 +3,12 @@ services:
     image: nginx:alpine
     container_name: disk_hunter_ui
     restart: unless-stopped
+    env_file: .env
     volumes:
       - ./html:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx-entrypoint.sh:/docker-entrypoint.d/99-custom.sh:ro
+      - /etc/ssl:/etc/ssl:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     network_mode: host
 
   disk-hunter-api:
@@ -13,24 +16,41 @@ services:
     container_name: disk_hunter_api
     restart: unless-stopped
     privileged: true 
+    env_file: .env
     volumes:
       - /dev:/dev
-      - /sys:/sys:ro
+      - /sys:/sys
       - /run/udev:/run/udev:ro
       - /var/run/docker.sock:/var/run/docker.sock 
-      - ./data:/app/data
+      - ${DATA_DIR:-./data}:/app/data
+      - ${REPORTS_DIR:-./data/reports}:/app/data/reports
+      - ${IMAGES_DIR:-./data/images}:/app/data/images
+      - ${DRIVES_DIR:-./data/images/drives}:/app/data/images/drives
+      - ${ISO_DIR:-./data/isos}:/app/data/isos
+      - ${HISTORY_FILE:-./data/wipe_history.json}:/app/data/wipe_history.json
+      - ${SMARTCTL_HISTORY_FILE:-./data/smartctl_history.json}:/app/data/smartctl_history.json
+      - ${SPEEDTEST_HISTORY_FILE:-./data/speedtest_history.json}:/app/data/speedtest_history.json
+      - ${LOGO_PATH:-./data/images/logo.png}:/app/data/images/logo.png
     network_mode: host
 
   disk-hunter-nwipe:
-    build: ./nwipe
+    build: ./workers/nwipe
     image: disk-hunter-nwipe
 
   disk-hunter-smartctl-test:
-    build: ./smartctl-test
+    build: ./workers/smartctl-test
     image: disk-hunter-smartctl-test
 
+  disk-hunter-nvme:
+    build: ./workers/nvme
+    image: disk-hunter-nvme
+
+  disk-hunter-hdparm:
+    build: ./workers/hdparm
+    image: disk-hunter-hdparm
+
   disk-hunter-parted:
-    build: ./parted
+    build: ./workers/parted
     image: disk-hunter-parted
     container_name: disk_hunter_parted
     restart: unless-stopped
@@ -50,3 +70,7 @@ services:
     volumes:
       - /dev:/dev
     network_mode: "host"
+
+  disk-hunter-speedtest:
+    build: ./workers/speedtest-worker
+    image: disk-hunter-speedtest

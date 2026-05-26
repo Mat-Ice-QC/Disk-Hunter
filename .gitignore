@@ -1,1 +1,22 @@
-AGENTS.md
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+
+# Runtime / persistent data
+data/
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db

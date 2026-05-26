@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Data Management</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/settings.css">
+    <link rel="stylesheet" href="css/data-management.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <h2 class="title-main">Data Management</h2>
+            
+            <div class="settings-grid">
+                <div class="card settings-card card-warning">
+                    <div class="card-header-flex" onclick="toggleCard(this)">
+                        <h3>Clear Audit Logs</h3>
+                        <span class="minimize-icon">▼</span>
+                    </div>
+                    <div class="card-content">
+                        <p>Clear audit logs and data from the system.</p>
+                        <button id="btn-clear-shred-logs" class="btn-action btn-shred w-100 mb-10 btn-accent-red">Clear Shredding History</button>
+                        <button id="btn-clear-smart-logs" class="btn-action btn-shred w-100 mb-10 btn-accent-red">Clear S.M.A.R.T. History</button>
+                        <button id="btn-clear-speedtest-logs" class="btn-action btn-shred w-100 mb-10 btn-accent-red">Clear Speed Test History</button>
+                        <button id="btn-clear-iso-logs" class="btn-action btn-shred w-100 mb-10 btn-accent-red">Clear ISO History</button>
+                        <button id="btn-clear-all-data-logs" class="btn-action btn-shred w-100 mb-10 btn-dark-red">Delete All Raw Log Files</button>
+                        <button id="btn-clear-all-pdfs" class="btn-action btn-shred w-100 mb-10 btn-dark-red">Delete All PDF Reports</button>
+                        <button id="btn-clear-all-isos" class="btn-action btn-shred w-100 mb-10 btn-dark-red">Delete All Downloaded ISOs</button>
+                        <button id="btn-clear-all-images" class="btn-action btn-shred w-100 btn-dark-red">Delete All Uploaded Drive Images</button>
+                        <div id="clear-logs-status" class="status-msg center mt-10"></div>
+                    </div>
+                </div>
+
+                <div class="card settings-card">
+                    <div class="card-header-flex" onclick="toggleCard(this)">
+                        <h3>File Browser</h3>
+                        <span class="minimize-icon">▼</span>
+                    </div>
+                    <div class="card-content">
+                        <p>Browse, download, or delete raw files stored in the data folder.</p>
+                        <div class="path-navigation">
+                            <strong>Current Path: </strong> <span id="current-path">/</span>
+                            <button id="btn-up-dir" class="btn-action btn-primary-inline ml-auto">Go Up</button>
+                        </div>
+                        <div class="file-browser-container">
+                            <table class="file-browser-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Size</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="file-browser-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="file-browser-status" class="status-msg center mt-10"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/data-management.js"></script>
+    <script>
+        // Global card toggle helper inherited from settings style
+        window.toggleCard = function(headerElem) {
+            const icon = headerElem.querySelector('.minimize-icon');
+            const content = headerElem.nextElementSibling;
+            if (content.classList.contains('minimized')) {
+                content.classList.remove('minimized');
+                icon.classList.remove('minimized');
+            } else {
+                content.classList.add('minimized');
+                icon.classList.add('minimized');
+            }
+        };
+    </script>
+</body>
+</html>

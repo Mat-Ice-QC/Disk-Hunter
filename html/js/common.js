@@ -1,12 +1,96 @@
+window.localesData = null;
+window.currentLanguage = localStorage.getItem('dh_lang') || 'en';
+
+function initLocalization(callback) {
+    fetch('/locales.json')
+        .then(res => res.json())
+        .then(data => {
+            window.localesData = data;
+            window.applyLocalization();
+            if (callback) callback();
+        })
+        .catch(err => {
+            console.error("Failed to load locales.json", err);
+            if (callback) callback();
+        });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    loadComponent('sidebar-container', 'components/sidebar.html', setActiveSidebarLink);
-    loadComponent('header-container', 'components/header.html', () => {
-        // After header is loaded, initialize its dynamic parts
-        fetchSystemInfo();
-        setInterval(fetchSystemInfo, 10000);
-        updateTime();
-        setInterval(updateTime, 1000);
+    initLocalization(() => {
+        loadComponent('sidebar-container', 'components/sidebar.html', () => {
+            setActiveSidebarLink();
+            fetchFeatures();
+            window.applyLocalization();
+        });
+        loadComponent('header-container', 'components/header.html', () => {
+            initWebSocket();
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            initGlobalTooltips();
+            initGlobalConfirm();
+            
+            const langSelect = document.getElementById('lang-select');
+            if (langSelect) {
+                langSelect.value = window.currentLanguage;
+                langSelect.addEventListener('change', (e) => {
+                    const newLang = e.target.value;
+                    window.currentLanguage = newLang;
+                    localStorage.setItem('dh_lang', newLang);
+                    window.applyLocalization();
+                    document.dispatchEvent(new CustomEvent('dh-language-changed', { detail: newLang }));
+                });
+            }
+            window.applyLocalization();
+        });
     });
+
+    // Potato Mode initialization
+    if (localStorage.getItem('potatoMode') === 'true') {
+        document.body.classList.add('potato-mode');
+    }
+
+    // Initialize custom selects globally
+    initCustomSelects();
+    window.selectObserver = new MutationObserver((mutations) => {
+        let shouldInit = false;
+        mutations.forEach(m => {
+            m.addedNodes.forEach(node => {
+                if (node.nodeName === 'SELECT') shouldInit = true;
+                else if (node.querySelectorAll && node.querySelectorAll('select').length > 0) shouldInit = true;
+            });
+        });
+        if (shouldInit) {
+            window.selectObserver.disconnect();
+            initCustomSelects();
+            window.selectObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    });
+    window.selectObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Performance Optimization: Dispatch cached data instantly for snappy page loads
+    // This allows the UI to populate with disk data immediately upon navigation 
+    // before the WebSocket even establishes a connection.
+    const cached = sessionStorage.getItem('dh_ws_cache');
+    if (cached) {
+        try {
+            processWebSocketData(JSON.parse(cached));
+        } catch (e) {
+            console.error("Error loading cached WS data:", e);
+        }
+    }
+
+    // Initialize footer
+    const mainWrapper = document.querySelector('.main-wrapper');
+    if (mainWrapper) {
+        const footerContainer = document.createElement('div');
+        footerContainer.id = 'footer-container';
+        footerContainer.className = 'footer';
+        mainWrapper.appendChild(footerContainer);
+        loadComponent('footer-container', 'components/footer.html', () => {
+            initFooterTools();
+        });
+    }
 });
 
 function loadComponent(elementId, url, callback) {
@@ -25,6 +109,22 @@ function loadComponent(elementId, url, callback) {
         .catch(error => console.error(`Failed to load component ${url}:`, error));
 }
 
+function initFooterTools() {
+    const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+    fetch('/tools.json')
+        .then(res => res.json())
+        .then(data => {
+            const toolsContainer = document.getElementById('footer-tools-container');
+            if (toolsContainer && data[currentPage] && data[currentPage].length > 0) {
+                const toolsList = data[currentPage].map(tool => `<a href="${tool.url}" target="_blank" rel="noopener noreferrer">${tool.name}</a>`).join(' / ');
+                toolsContainer.innerHTML = `Thanks to: ${toolsList}`;
+            } else if (toolsContainer) {
+                toolsContainer.innerHTML = '';
+            }
+        })
+        .catch(err => console.error("Failed to load tools.json", err));
+}
+
 function setActiveSidebarLink() {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
     const pageIdMap = {
@@ -37,6 +137,7 @@ function setActiveSidebarLink() {
         'partition.html': 'nav-partition',
         'speedtest.html': 'nav-speedtest',
         'iso.html': 'nav-iso',
+        'data-management.html': 'nav-data-management',
         'settings.html': 'nav-settings'
     };
     
@@ -57,32 +158,471 @@ function setActiveSidebarLink() {
 }
 
 
-async function fetchSystemInfo() {
-    try {
-        const res = await fetch('/api/system-info');
-        if (!res.ok) {
-            throw new Error(`API responded with ${res.status}`);
-        }
-        const data = await res.json();
-        const hostnameEl = document.getElementById('sys-hostname');
-        const tempEl = document.getElementById('sys-temp');
-        const ipEl = document.getElementById('sys-ip');
+function updateSystemInfoUI(data) {
+    const hostnameEl = document.getElementById('sys-hostname');
+    const tempEl = document.getElementById('sys-temp');
+    const ipEl = document.getElementById('sys-ip');
 
-        if(hostnameEl) hostnameEl.innerText = data.hostname || 'Unknown';
-        if(tempEl) tempEl.innerText = data.temperature !== 'N/A' ? data.temperature + '°C' : 'N/A';
-        if(ipEl) ipEl.innerText = data.ip || 'Unknown';
-
-    } catch (e) {
-        console.error("Failed to fetch sys info", e);
-        const hostnameEl = document.getElementById('sys-hostname');
-        if(hostnameEl) hostnameEl.innerText = 'Error';
-    }
+    if(hostnameEl) hostnameEl.innerText = data.hostname || 'Unknown';
+    if(tempEl) tempEl.innerText = data.temperature !== 'N/A' ? data.temperature + '°C' : 'N/A';
+    if(ipEl) ipEl.innerText = data.ip || 'Unknown';
 }
+
+function processWebSocketData(data) {
+    // Dispatch global events for other components to listen to
+    if (data.disks) document.dispatchEvent(new CustomEvent('ws-disks', { detail: data.disks }));
+    if (data.wipe_status) document.dispatchEvent(new CustomEvent('ws-wipe_status', { detail: data.wipe_status }));
+    if (data.speedtest_status) document.dispatchEvent(new CustomEvent('ws-speedtest_status', { detail: data.speedtest_status }));
+    if (data.smart_status) document.dispatchEvent(new CustomEvent('ws-smart_status', { detail: data.smart_status }));
+    if (data.iso_download_status) document.dispatchEvent(new CustomEvent('ws-iso_download_status', { detail: data.iso_download_status }));
+    if (data.iso_write_status) document.dispatchEvent(new CustomEvent('ws-iso_write_status', { detail: data.iso_write_status }));
+}
+
+let ws = null;
+function initWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log("WebSocket connected");
+    };
+    
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            
+            if (data.system_info) {
+                updateSystemInfoUI(data.system_info);
+            }
+            
+            // Save to cache for instant navigation, excluding system_info (time/temp)
+            const cacheData = { ...data };
+            delete cacheData.system_info;
+            sessionStorage.setItem('dh_ws_cache', JSON.stringify(cacheData));
+
+            processWebSocketData(data);
+        } catch (e) {
+            console.error("WebSocket message parse error", e);
+        }
+    };
+    
+    ws.onclose = () => {
+        console.log("WebSocket disconnected. Reconnecting in 3s...");
+        setTimeout(initWebSocket, 3000);
+    };
+    
+    ws.onerror = (err) => {
+        console.error("WebSocket error", err);
+        ws.close();
+    };
+}
+
 
 function updateTime() {
     const now = new Date();
     const timeString = now.toLocaleTimeString('en-US', { hour12: false });
     const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const timeEl = document.getElementById('sys-time');
-    if (timeEl) timeEl.innerText = `${dateString}, ${timeString}`;
+    
+    if (timeEl) {
+        timeEl.innerText = `${dateString}, ${timeString}`;
+        
+        const utcTime = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'UTC' });
+        const estTime = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' });
+        const currentTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        
+        timeEl.parentElement.setAttribute('data-tooltip', `<strong>System Time</strong>UTC: ${utcTime}<br>EST: ${estTime}<br>Current: ${currentTz}`);
+    }
 }
+
+// --- Global Tooltip Logic ---
+let globalTooltip = null;
+
+function initGlobalTooltips() {
+    globalTooltip = document.getElementById('disk-hunter-tooltip');
+    if (!globalTooltip) {
+        globalTooltip = document.createElement('div');
+        globalTooltip.id = 'disk-hunter-tooltip';
+        globalTooltip.className = 'custom-tooltip';
+        document.body.appendChild(globalTooltip);
+    }
+
+    document.body.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-tooltip]');
+        if (target) {
+            const content = target.getAttribute('data-tooltip');
+            if (content) {
+                globalTooltip.innerHTML = content;
+                globalTooltip.classList.add('visible');
+            }
+        }
+    });
+
+    document.body.addEventListener('mousemove', (e) => {
+        if (!globalTooltip.classList.contains('visible')) return;
+        
+        const tooltipWidth = globalTooltip.offsetWidth;
+        const tooltipHeight = globalTooltip.offsetHeight;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        let x = e.clientX + 15; // Offset from cursor by 15px
+        let y = e.clientY + 15;
+
+        // Collision detection logic to prevent the tooltip from rendering outside the viewport window
+        if (x + tooltipWidth > windowWidth) {
+            x = e.clientX - tooltipWidth - 15; // Flip to left of cursor
+        }
+        if (y + tooltipHeight > windowHeight) {
+            y = e.clientY - tooltipHeight - 15; // Flip to above cursor
+        }
+
+        globalTooltip.style.left = x + 'px';
+        globalTooltip.style.top = y + 'px';
+    });
+
+    document.body.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('[data-tooltip]');
+        if (target) {
+            // Check if relatedTarget is still within the target to avoid flickering
+            if (!target.contains(e.relatedTarget)) {
+                globalTooltip.classList.remove('visible');
+            }
+        }
+    });
+}
+
+// --- Global Confirm Modal ---
+function initGlobalConfirm() {
+    let confirmModal = document.getElementById('custom-confirm-modal');
+    if (!confirmModal) {
+        confirmModal = document.createElement('div');
+        confirmModal.id = 'custom-confirm-modal';
+        confirmModal.className = 'modal-overlay';
+        confirmModal.innerHTML = `
+            <div class="modal-box" style="max-width: 400px; margin: auto;">
+                <div class="modal-header" id="custom-confirm-title" style="border-bottom:none; justify-content:center; padding-bottom: 10px; color: var(--accent-red);">Confirm Action</div>
+                <div class="modal-content" id="custom-confirm-msg" style="text-align: center; color: var(--text-muted); font-size: 14px; padding-top: 0;">Are you sure?</div>
+                <div class="modal-actions" style="border-top:none; justify-content:center; gap: 15px;">
+                    <button class="btn-modal-cancel" id="btn-custom-confirm-no" style="display:none;">Cancel</button>
+                    <button class="btn-action red" id="btn-custom-confirm-yes">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(confirmModal);
+    }
+}
+
+window.customConfirm = function(msg, onConfirm, title = "Confirm Action") {
+    const modal = document.getElementById('custom-confirm-modal');
+    if (!modal) {
+        if (confirm(msg)) onConfirm();
+        return;
+    }
+    
+    document.getElementById('custom-confirm-title').innerText = title;
+    document.getElementById('custom-confirm-msg').innerText = msg;
+    
+    const btnYes = document.getElementById('btn-custom-confirm-yes');
+    const btnNo = document.getElementById('btn-custom-confirm-no');
+    
+    btnNo.style.display = 'block';
+    
+    const newBtnYes = btnYes.cloneNode(true);
+    const newBtnNo = btnNo.cloneNode(true);
+    btnYes.parentNode.replaceChild(newBtnYes, btnYes);
+    btnNo.parentNode.replaceChild(newBtnNo, btnNo);
+    
+    newBtnNo.addEventListener('click', () => modal.classList.remove('active'));
+    newBtnYes.addEventListener('click', () => {
+        modal.classList.remove('active');
+        if(onConfirm) onConfirm();
+    });
+    
+    modal.classList.add('active');
+};
+
+window.customAlert = function(msg, title = "Alert") {
+    const modal = document.getElementById('custom-confirm-modal');
+    if (!modal) {
+        alert(msg);
+        return;
+    }
+    
+    document.getElementById('custom-confirm-title').innerText = title;
+    document.getElementById('custom-confirm-msg').innerText = msg;
+    
+    const btnYes = document.getElementById('btn-custom-confirm-yes');
+    const btnNo = document.getElementById('btn-custom-confirm-no');
+    
+    btnNo.style.display = 'none';
+    
+    const newBtnYes = btnYes.cloneNode(true);
+    btnYes.parentNode.replaceChild(newBtnYes, btnYes);
+    
+    newBtnYes.addEventListener('click', () => modal.classList.remove('active'));
+    
+    modal.classList.add('active');
+};
+
+// --- Custom JS Dropdown Component ---
+// This class replaces native browser <select> elements with a custom-styled DOM structure
+// to achieve a cohesive, glassmorphism aesthetic across the entire application.
+class CustomSelect {
+    constructor(originalSelect) {
+        this.originalSelect = originalSelect;
+        this.wrapper = document.createElement('div');
+        this.wrapper.className = 'custom-select-wrapper';
+        
+        this.trigger = document.createElement('div');
+        this.trigger.className = 'custom-select-trigger';
+        
+        this.optionsContainer = document.createElement('div');
+        this.optionsContainer.className = 'custom-select-options';
+        
+        // Insert wrapper before original select, then move original select inside
+        this.originalSelect.parentNode.insertBefore(this.wrapper, this.originalSelect);
+        this.wrapper.appendChild(this.originalSelect);
+        this.wrapper.appendChild(this.trigger);
+        this.wrapper.appendChild(this.optionsContainer);
+        
+        this.renderOptions();
+        
+        this.trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggle();
+        });
+        
+        // Close on outside click
+        document.addEventListener('click', (e) => {
+            if (!this.wrapper.contains(e.target)) {
+                this.close();
+            }
+        });
+
+        // Watch for changes to the original select's options
+        this.observer = new MutationObserver(() => this.renderOptions());
+        this.observer.observe(this.originalSelect, { childList: true, subtree: true, attributes: true, attributeFilter: ['selected'] });
+
+        this.originalSelect.addEventListener('change', () => this.updateTriggerText());
+    }
+
+    renderOptions() {
+        this.optionsContainer.innerHTML = '';
+        const options = Array.from(this.originalSelect.options);
+        
+        if (options.length === 0) {
+            this.trigger.innerHTML = `<span>No options</span><div class="custom-select-arrow"></div>`;
+            return;
+        }
+
+        options.forEach(option => {
+            const optDiv = document.createElement('div');
+            optDiv.className = 'custom-select-option';
+            if (option.selected) optDiv.classList.add('selected');
+            optDiv.innerText = option.innerText;
+            
+            optDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.originalSelect.value = option.value;
+                this.originalSelect.dispatchEvent(new Event('change'));
+                this.close();
+            });
+            this.optionsContainer.appendChild(optDiv);
+        });
+
+        this.updateTriggerText();
+    }
+
+    updateTriggerText() {
+        const selectedOption = this.originalSelect.options[this.originalSelect.selectedIndex];
+        const text = selectedOption ? selectedOption.innerText : 'Select...';
+        this.trigger.innerHTML = `<span>${text}</span><div class="custom-select-arrow"></div>`;
+        
+        // Update selected class in custom options
+        const customOptions = this.optionsContainer.querySelectorAll('.custom-select-option');
+        customOptions.forEach((opt, index) => {
+            if (index === this.originalSelect.selectedIndex) {
+                opt.classList.add('selected');
+            } else {
+                opt.classList.remove('selected');
+            }
+        });
+    }
+
+    toggle() {
+        // Close all other open custom selects
+        document.querySelectorAll('.custom-select-wrapper.open').forEach(wrapper => {
+            if (wrapper !== this.wrapper) wrapper.classList.remove('open');
+        });
+        this.wrapper.classList.toggle('open');
+    }
+
+    close() {
+        this.wrapper.classList.remove('open');
+    }
+}
+
+function initCustomSelects() {
+    document.querySelectorAll('select').forEach(select => {
+        // Prevent double initialization
+        if (!select.parentElement || !select.parentElement.classList.contains('custom-select-wrapper')) {
+            new CustomSelect(select);
+        }
+    });
+}
+
+// --- Centralized API Services ---
+class DiskService {
+    constructor() {
+        this.cache = null;
+        this.lastFetch = 0;
+        this.fetchPromise = null;
+    }
+
+    async getDisks(force = false) {
+        const now = Date.now();
+        if (!force && this.cache && (now - this.lastFetch < 10000)) {
+            return this.cache;
+        }
+
+        if (this.fetchPromise) {
+            return this.fetchPromise;
+        }
+
+        this.fetchPromise = fetch('/api/disks')
+            .then(res => res.json())
+            .then(data => {
+                this.cache = data;
+                this.lastFetch = Date.now();
+                this.fetchPromise = null;
+                return data;
+            })
+            .catch(err => {
+                this.fetchPromise = null;
+                throw err;
+            });
+
+        return this.fetchPromise;
+    }
+}
+
+class SpeedtestService {
+    async start(drives, testType, size, timezone) {
+        const res = await fetch('/api/speedtest/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                drives: drives, 
+                test_type: testType, 
+                size: size,
+                timezone: timezone
+            })
+        });
+        if (!res.ok) throw new Error('Failed to start speedtest');
+        return await res.json();
+    }
+}
+
+class PartitionService {
+    async action(drive, actionName, params) {
+        const res = await fetch('/api/partitions/action', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ drive: drive, action: actionName, params: params })
+        });
+        if (!res.ok) throw new Error('Failed to execute partition action');
+        return await res.json();
+    }
+}
+
+window.diskService = new DiskService();
+window.speedtestService = new SpeedtestService();
+window.partitionService = new PartitionService();
+
+function fetchFeatures() {
+    fetch('/api/system/features')
+        .then(res => res.json())
+        .then(data => {
+            if (data.ENABLE_SHREDDER === false) {
+                document.getElementById('nav-shredding')?.setAttribute('style', 'display: none !important');
+                document.getElementById('nav-history')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_SPEEDTEST === false) {
+                document.getElementById('nav-speedtest')?.setAttribute('style', 'display: none !important');
+                document.getElementById('nav-speedtest-history')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_ISOWRITER === false) {
+                document.getElementById('nav-iso')?.setAttribute('style', 'display: none !important');
+                document.getElementById('nav-iso-history')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_SMARTCTL === false) {
+                document.getElementById('nav-smartctl')?.setAttribute('style', 'display: none !important');
+                document.getElementById('nav-smart-history')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_DATA_MANAGEMENT === false) {
+                document.getElementById('nav-data-management')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_NETWORK_SHARE === false) {
+                document.getElementById('nav-network-share')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.ENABLE_DELETE_HISTORY === false) {
+                // Hide clear history buttons
+                const clearHistoryBtns = document.querySelectorAll('#btn-clear-history');
+                clearHistoryBtns.forEach(btn => btn.setAttribute('style', 'display: none !important'));
+                
+                // Hide specific clear buttons in data management
+                const dataMgmtClearBtns = [
+                    'btn-clear-shred-logs', 'btn-clear-smart-logs', 'btn-clear-speedtest-logs',
+                    'btn-clear-iso-logs', 'btn-clear-all-data-logs', 'btn-clear-all-pdfs',
+                    'btn-clear-all-isos', 'btn-clear-all-images'
+                ];
+                dataMgmtClearBtns.forEach(id => {
+                    document.getElementById(id)?.setAttribute('style', 'display: none !important');
+                });
+            }
+            
+            // Redirect if current page is disabled
+            const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+            const disabledPagesMap = {
+                'shredding.html': data.ENABLE_SHREDDER,
+                'history.html': data.ENABLE_SHREDDER,
+                'speedtest.html': data.ENABLE_SPEEDTEST,
+                'speedtest_history.html': data.ENABLE_SPEEDTEST,
+                'iso.html': data.ENABLE_ISOWRITER,
+                'iso_history.html': data.ENABLE_ISOWRITER,
+                'smartctl.html': data.ENABLE_SMARTCTL,
+                'smart_history.html': data.ENABLE_SMARTCTL,
+                'data-management.html': data.ENABLE_DATA_MANAGEMENT,
+                'network-share.html': data.ENABLE_NETWORK_SHARE
+            };
+            if (disabledPagesMap[currentPage] === false) {
+                window.location.href = 'index.html';
+            }
+        })
+        .catch(err => console.error("Failed to fetch features:", err));
+}
+
+window.applyLocalization = function() {
+    if (!window.localesData || !window.localesData[window.currentLanguage]) return;
+    const langData = window.localesData[window.currentLanguage];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (langData[key]) {
+            if (el.tagName === 'INPUT' && el.type === 'text') {
+                el.placeholder = langData[key];
+            } else {
+                el.innerText = langData[key];
+            }
+        }
+    });
+};
+
+window.translate = function(key, defaultVal) {
+    if (window.localesData && window.localesData[window.currentLanguage] && window.localesData[window.currentLanguage][key]) {
+        return window.localesData[window.currentLanguage][key];
+    }
+    return defaultVal;
+};

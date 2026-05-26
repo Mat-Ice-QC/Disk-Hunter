@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Speed Test History</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/history.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="card">
+                <div class="history-header">
+                    <h2 class="history-title">Speed Test History</h2>
+                    <div>
+                        <button id="btn-refresh" class="btn-action">Refresh</button>
+                        <button id="btn-export-csv" class="btn-action">Export CSV</button>
+                        <button id="btn-clear-history" class="btn-action red">Clear History</button>
+                        <a href="speedtest.html" class="btn-action">Back to Speed Test</a>
+                    </div>
+                </div>
+                
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date / Time</th>
+                            <th>Event</th>
+                            <th>User (IP)</th>
+                            <th>Drive S/N</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Read Speed</th>
+                            <th>Write Speed</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-list">
+                        <tr><td colspan="8">Loading history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Modal -->
+    <div id="logs-modal" class="modal-overlay">
+        <div class="modal-box logs-modal-box">
+            <div class="modal-header">Speed Test Logs</div>
+            <div class="modal-content history-modal-content">
+                <pre id="logs-output" class="logs-output-pre"></pre>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-close-logs" class="btn-modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modals -->
+    <div id="custom-alert-modal" class="modal-overlay">
+        <div class="modal-box alert-modal-box">
+            <div class="modal-header" id="custom-alert-title">Alert</div>
+            <div class="modal-content history-modal-content-center">
+                <p id="custom-alert-msg" class="history-modal-msg"></p>
+            </div>
+            <div class="modal-actions history-modal-actions-center">
+                <button id="btn-custom-alert-ok" class="btn-action btn-smart">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="custom-confirm-modal" class="modal-overlay">
+        <div class="modal-box confirm-modal-box">
+            <div class="modal-header" id="custom-confirm-title">Confirm Action</div>
+            <div class="modal-content history-modal-content-center">
+                <p id="custom-confirm-msg" class="history-modal-msg"></p>
+            </div>
+            <div class="modal-actions history-modal-actions-center">
+                <button id="btn-custom-confirm-yes" class="btn-action red">Yes</button>
+                <button id="btn-custom-confirm-no" class="btn-modal-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/speedtest_history.js"></script>
+</body>
+</html>

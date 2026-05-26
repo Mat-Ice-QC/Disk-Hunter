@@ -30,3 +30,10 @@ class PartitionActionRequest(BaseModel):
     drive: str
     action: str
     params: list[str] = []
+
+class SpeedtestRequest(BaseModel):
+    drives: list[str]
+    test_type: str = "read"
+    size: str = "1G"
+    timezone: str = "UTC"
+

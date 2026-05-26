@@ -4,10 +4,11 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Request
 from .models import SmartRequest, StopRequest
 from .history import append_smartctl_history
 from .system import get_local_time
+from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/smartctl/logs/python"
@@ -25,18 +26,11 @@ router = APIRouter()
 @router.get("/api/smart-status")
 def smart_status():
     try:
-        cmd = ["docker", "ps", "--format", "{{.Names}}", "--filter", "name=disk_hunter_smartctl_"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        containers = result.stdout.strip().split('\n')
+        containers = get_running_containers("disk_hunter_smartctl_")
         
         running_tests = []
         for c in containers:
-            if not c:
-                continue
-
-            log_cmd = ["docker", "logs", c]
-            log_res = subprocess.run(log_cmd, capture_output=True, text=True)
-            logs = log_res.stdout.strip() or log_res.stderr.strip()
+            logs = get_container_logs(c)
 
             progress = "Initializing..."
             # Find the last progress line in the logs
@@ -91,8 +85,7 @@ def stop_smart_test(request: StopRequest):
         subprocess.run(abort_cmd, capture_output=True)
         
         # Then stop and remove the container
-        subprocess.run(["docker", "stop", request.container_name], check=True, capture_output=True)
-        subprocess.run(["docker", "rm", "-f", request.container_name], check=True, capture_output=True)
+        stop_and_remove_container(request.container_name)
         logging.info(f"S.M.A.R.T. test container stopped and removed: {request.container_name}")
         return {"status": "success", "message": f"Stop command sent to {request.container_name}"}
     except Exception as e:
@@ -100,9 +93,8 @@ def stop_smart_test(request: StopRequest):
         return {"status": "error", "message": str(e)}
 
 
-async def monitor_smart_test(container_name: str, drive: str, serial: str, test_type: str, start_time: str):
-    proc = await asyncio.create_subprocess_exec("docker", "wait", container_name, stdout=asyncio.subprocess.PIPE)
-    await proc.communicate()
+async def monitor_smart_test(container_name: str, drive: str, serial: str, test_type: str, start_time: str, ip: str):
+    await wait_for_container(container_name)
     
     end_time = get_local_time()
     
@@ -111,9 +103,7 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
     log_file = os.path.join(log_dir, f"{container_name}.log")
     
     # Get container logs
-    with open(log_file, "a") as f:
-        log_cmd = ["docker", "logs", container_name]
-        subprocess.run(log_cmd, stdout=f, stderr=subprocess.STDOUT)
+    save_container_logs(container_name, log_file)
 
     status_text = "completed"
     with open(log_file, "r") as f:
@@ -128,12 +118,13 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
     append_smartctl_history({
         "timestamp": end_time,
         "event": f"SMART test ({test_type}) {status_text} on {drive}",
+        "username": ip,
         "serial": serial,
         "test_type": test_type,
         "status": status_text,
         "container_name": container_name
     })
-    subprocess.run(["docker", "rm", "-f", container_name], check=False, capture_output=True)
+    stop_and_remove_container(container_name)
 
 
 
@@ -154,11 +145,9 @@ def get_smart_logs(container_name: str):
             return {"status": "success", "logs": logs}
 
         # If the file doesn't exist, the container might still be running
-        cmd = ["docker", "logs", container_name]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
-        if result.returncode == 0:
-            return {"status": "success", "logs": result.stdout.strip() or result.stderr.strip()}
+        logs = get_container_logs(container_name)
+        if logs:
+            return {"status": "success", "logs": logs}
         else:
             return {"status": "error", "message": f"Could not retrieve logs for {container_name}. The container may not exist, or it may have been cleaned up after the test."}
 
@@ -168,7 +157,7 @@ def get_smart_logs(container_name: str):
 
 
 @router.post("/api/smart/start")
-def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks):
+def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, http_request: Request):
     try:
         test_type = request.test_type
         start_time = get_local_time()
@@ -198,18 +187,16 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks):
             subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, check=False)
 
             logging.info(f"Starting S.M.A.R.T. test for {drive} (container: {container_name})")
-            cmd = [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "--privileged",
-                "--device", f"{drive}:{drive}",
-                "disk-hunter-smartctl-test",
-                drive, test_type
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode != 0:
-                logging.error(f"Docker Error starting S.M.A.R.T. test for {drive}: {res.stderr.strip()}")
-                return {"status": "error", "message": f"Docker Error: {res.stderr.strip()}"}
+            success = run_container(
+                name=container_name,
+                image="disk-hunter-smartctl-test",
+                args=[drive, test_type],
+                privileged=True,
+                devices=[f"{drive}:{drive}"]
+            )
+            if not success:
+                logging.error(f"Docker Error starting S.M.A.R.T. test for {drive}")
+                return {"status": "error", "message": f"Docker Error starting container"}
 
             append_smartctl_history({
                 "timestamp": start_time,
