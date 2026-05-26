@@ -111,3 +111,4 @@ docker compose up -d --build --force-recreate
 - **Drive images fix** add default images for nvme / usb / ssd / hdd / sd...
 - **Security** do an audit on the whole code base 
 - **Pin package Versions** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
+- **Fix clear history buttons** clearing the history does not work through the ui 
