@@ -1,8 +1,22 @@
 <div class="sys-info">
-    <div class="info-pill"><span class="temp-icon">🖥️</span> Host: <span id="sys-hostname">Loading...</span></div>
-    <div class="info-pill"><span class="temp-icon">🌡️</span> Temp: <span id="sys-temp">--°C</span></div>
-    <div class="info-pill"><span class="ip-icon">🌐</span> IP: <span id="sys-ip">--</span></div>
+    <div class="info-pill"><span class="temp-icon">🖥️</span> <span data-i18n="sys_host">Host</span>: <span id="sys-hostname">Loading...</span></div>
+    <div class="info-pill"><span class="temp-icon">🌡️</span> <span data-i18n="sys_temp">Temp</span>: <span id="sys-temp">--°C</span></div>
+    <div class="info-pill"><span class="ip-icon">🌐</span> <span data-i18n="sys_ip">IP</span>: <span id="sys-ip">--</span></div>
 </div>
 <div class="sys-info">
     <div class="info-pill"><span class="time-icon">🕒</span> <span id="sys-time">--</span></div>
+    <a href="docs.html" class="header-docs-btn" id="btn-header-docs" data-tooltip="View Documentation">
+        <span class="doc-icon">📖</span>
+        <span data-i18n="nav_docs">Documentation</span>
+    </a>
+    <button class="header-docs-btn" id="btn-layout-toggle" data-tooltip="Toggle Layout">
+        <span id="layout-toggle-text">Grid View</span>
+    </button>
+    <div class="info-pill lang-pill">
+        <select id="lang-select">
+            <option value="en" style="background:#0f172a;">EN</option>
+            <option value="fr" style="background:#0f172a;">FR</option>
+            <option value="es" style="background:#0f172a;">ES</option>
+        </select>
+    </div>
 </div>

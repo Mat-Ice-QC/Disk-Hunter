@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Hunter | Speed Test</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shredding.css"> 
+    <link rel="stylesheet" href="css/speedtest.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -13,11 +15,92 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <div class="card">
-                <h2>Drive Speed Test</h2>
-                <p>Benchmark read/write IOPS and sequential speeds using tools like <code>fio</code> or <code>dd</code> to verify drive performance.</p>
-                <div id="speedtest-ui-container">
+            <div class="shredding-layout">
+                
+                <div class="shredding-column-sidebar">
+                    <h2 class="title">Drive Speed Test</h2>
+                    <p>Benchmark read/write sequential speeds to verify drive performance.</p>
+                    
+                    <div class="config-box">
+                        <label class="shred-label"><span>Test Type</span><span class="help-indicator" data-tooltip="<strong>Test Operation</strong><br>Select Read Only, Write Only, or Read & Write speedtest sequence. Note that Write actions create a temporary file inside the partition.">?</span></label>
+                        <select id="speedtest-type" class="shred-select">
+                            <option value="read" selected>Read Only</option>
+                            <option value="write">Write Only</option>
+                            <option value="rw">Read & Write</option>
+                        </select>
+
+                        <label class="shred-label" style="margin-top: 15px;"><span>Test Size</span><span class="help-indicator" data-tooltip="<strong>Test Block Volume</strong><br>Select the file size volume to write/read. Larger files take longer but offer more accurate sustain rates.">?</span></label>
+                        <select id="speedtest-size" class="shred-select">
+                            <option value="1G" selected>1 GB</option>
+                            <option value="10G">10 GB</option>
+                            <option value="100G">100 GB</option>
+                            <option value="all">All (1G, 10G, 100G)</option>
+                        </select>
+
+                        <button id="btn-start-speedtest" class="btn-shred" style="margin-top: 15px; margin-bottom: 10px;">Start Tests</button>
+                        <a href="speedtest_history.html" class="btn-action btn-smart" style="display: block; text-align: center; text-decoration: none;">View History</a>
                     </div>
+                </div>
+
+                <div class="shredding-column-main">
+                    
+                    <div id="active-speedtests-section" style="display: none; margin-bottom: 30px;">
+                        <h3 class="title-small">Active Tests</h3>
+                        <div id="active-speedtest-list" class="drive-list-grid mt-15"></div>
+                    </div>
+
+                    <h3>Available Drives</h3>
+                    <div id="drive-list-container" class="drive-list-grid mt-15">
+                        <p>Scanning hardware...</p>
+                    </div>
+
+                    <div id="debug-console" style="margin-top: 30px;">
+                        <div class="debug-header">API DEBUG TERMINAL</div>
+                        <div id="debug-output">Awaiting execution...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Partition Creation -->
+    <div id="create-partition-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">Create Partition for Testing</div>
+            <div class="modal-content" style="padding: 20px;">
+                <p id="create-partition-msg">The selected drive has no partitions. You need to create one to run the speed test.</p>
+                <label style="display: block; margin-top: 10px; margin-bottom: 5px; color: var(--text-light);">Partition Size (e.g. 10GB, 500MB, 100%):</label>
+                <input type="text" id="partition-size-input" value="100%" class="form-input" style="width: 100%;">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-confirm-partition" class="btn-action btn-smart">Create Partition</button>
+                <button id="btn-cancel-partition" class="btn-modal-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modals -->
+    <div id="custom-alert-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header" id="custom-alert-title">Alert</div>
+            <div class="modal-content" style="padding: 20px; text-align: center;">
+                <p id="custom-alert-msg" style="margin-bottom: 0;"></p>
+            </div>
+            <div class="modal-actions" style="justify-content: center;">
+                <button id="btn-custom-alert-ok" class="btn-action btn-smart">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="custom-confirm-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 450px;">
+            <div class="modal-header" id="custom-confirm-title">Confirm Action</div>
+            <div class="modal-content" style="padding: 20px; text-align: center;">
+                <p id="custom-confirm-msg" style="margin-bottom: 0;"></p>
+            </div>
+            <div class="modal-actions" style="justify-content: center;">
+                <button id="btn-custom-confirm-yes" class="btn-action red">Yes</button>
+                <button id="btn-custom-confirm-no" class="btn-modal-cancel">Cancel</button>
             </div>
         </div>
     </div>

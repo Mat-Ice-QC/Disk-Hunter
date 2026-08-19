@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Onboard Documentation</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="docs-container">
+                <div class="docs-header-section">
+                    <h2 data-i18n="docs_title">Technician Onboard Documentation</h2>
+                    <p data-i18n="docs_subtitle">Interactive help guides, specifications, and hardware operations procedures.</p>
+                    
+                    <div class="search-box-wrapper">
+                        <input type="text" id="docs-search" class="form-input-text" placeholder="Search documentation topics...">
+                    </div>
+                </div>
+
+                <div class="docs-layout">
+                    <!-- Nav Tabs Sidebar -->
+                    <div class="docs-nav-card">
+                        <div class="docs-nav-item active" data-tab="tab-overview">1. System Overview</div>
+                        <div class="docs-nav-item" data-tab="tab-shredding">2. Disk Shredding</div>
+                        <div class="docs-nav-item" data-tab="tab-smart">3. S.M.A.R.T. Diagnostics</div>
+                        <div class="docs-nav-item" data-tab="tab-partition">4. Partitioning & Formatting</div>
+                        <div class="docs-nav-item" data-tab="tab-speed">5. Performance Benchmarks</div>
+                    </div>
+
+                    <!-- Content Panel -->
+                    <div class="docs-content-card">
+                        <!-- Overview Tab -->
+                        <div class="docs-tab-content active" id="tab-overview"></div>
+
+                        <!-- Shredding Tab -->
+                        <div class="docs-tab-content" id="tab-shredding">
+                            <div class="docs-sub-tabs">
+                                <button class="docs-sub-tab active" data-subtab="shredding-standard" data-i18n="doc_subtab_standard">Block-Level Shredding</button>
+                                <button class="docs-sub-tab" data-subtab="shredding-nvme" data-i18n="doc_subtab_nvme">NVMe Secure Erase</button>
+                            </div>
+                            <div class="docs-subtab-content active" id="shredding-standard"></div>
+                            <div class="docs-subtab-content" id="shredding-nvme"></div>
+                        </div>
+
+                        <!-- SMART Diagnostics Tab -->
+                        <div class="docs-tab-content" id="tab-smart"></div>
+
+                        <!-- Partitioning Tab -->
+                        <div class="docs-tab-content" id="tab-partition"></div>
+
+                        <!-- Speed Benchmarks Tab -->
+                        <div class="docs-tab-content" id="tab-speed"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/docs.js"></script>
+</body>
+</html>

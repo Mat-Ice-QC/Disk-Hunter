@@ -4,9 +4,6 @@ let previousDisks = '';
 let previousStatus = '';
 
 document.addEventListener('DOMContentLoaded', () => {
-    fetchData();
-    setInterval(fetchData, 5000);
-
     document.getElementById('btn-initiate-tests').addEventListener('click', startSelectedTests);
     document.getElementById('btn-close-raw-modal').addEventListener('click', () => {
         document.getElementById('smart-data-raw-modal').classList.remove('active');
@@ -14,6 +11,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-close-parsed-modal').addEventListener('click', () => {
         document.getElementById('smart-data-parsed-modal').classList.remove('active');
     });
+
+    // Show/hide API Debug Console based on settings
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    if (debugConsole) {
+        if (isDebug) {
+            debugConsole.style.display = 'block';
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
+            }
+        } else {
+            debugConsole.style.display = 'none';
+        }
+    }
 });
 
 function formatBytes(bytes, decimals = 1) {
@@ -25,46 +37,58 @@ function formatBytes(bytes, decimals = 1) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-async function fetchData() {
-    try {
-        const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
-        const [disksRes, statusRes] = await Promise.all([
-            fetch(`/api/disks?exclude_root=${protectRoot}`).catch(e => ({ error: 'disks', details: e })),
-            fetch('/api/smart-status').catch(e => ({ error: 'smart-status', details: e }))
-        ]);
+let currentDisks = null;
+let currentSmartStatus = null;
 
-        if (disksRes.error || statusRes.error) {
-            const errors = [disksRes, statusRes].filter(r => r.error);
-            for (const err of errors) {
-                console.error(`Failed to fetch ${err.error}:`, err.details);
-            }
-            document.getElementById('drive-list-container').innerHTML = `<p style="color: red;">Error fetching data. Check console for details.</p>`;
-            return;
-        }
+document.addEventListener('ws-disks', (e) => {
+    currentDisks = e.detail;
+    updateSmartUI();
+});
 
-        const diskData = await disksRes.json();
-        const statusData = await statusRes.json();
+document.addEventListener('ws-smart_status', (e) => {
+    currentSmartStatus = e.detail;
+    updateSmartUI();
+});
 
-        if (diskData.status !== 'success') {
-            document.getElementById('drive-list-container').innerHTML = `<p style="color: red;">Error fetching disks: ${diskData.message}</p>`;
-            return;
-        }
+let previousSmartStateHash = "";
 
-        const disksJson = JSON.stringify(diskData.disks);
-        const statusJson = JSON.stringify(statusData);
+function updateSmartUI() {
+    if (!currentDisks || !currentSmartStatus) return;
 
-        if (disksJson !== previousDisks || statusJson !== previousStatus) {
-            availableDisksData = diskData.disks;
-            const runningTests = statusData.running_tests || [];
-            rebuildUI(diskData.disks, runningTests);
-            previousDisks = disksJson;
-            previousStatus = statusJson;
-        }
+    const diskData = currentDisks;
+    const statusData = currentSmartStatus;
 
-    } catch (error) {
-        console.error("Failed to process data:", error);
-         document.getElementById('drive-list-container').innerHTML = `<p style="color: red;">A critical error occurred while processing data.</p>`;
+    if (diskData.status !== 'success') {
+        document.getElementById('drive-list-container').innerHTML = `<p style="color: red;">Error fetching disks: ${diskData.message}</p>`;
+        return;
     }
+
+    const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
+    const filteredDisks = diskData.disks.filter(d => !(protectRoot && d.is_root));
+
+    availableDisksData = filteredDisks;
+    const runningTests = statusData.running_tests || [];
+
+    const currentStateHash = filteredDisks.map(d => {
+        const activeTest = runningTests.find(test => test.drive === d.name);
+        return `${d.path}:${activeTest ? 'active' : 'idle'}`;
+    }).join('|');
+
+    if (currentStateHash !== previousSmartStateHash) {
+        rebuildUI(filteredDisks, runningTests);
+        previousSmartStateHash = currentStateHash;
+    } else {
+        updateLiveSmartLogs(runningTests);
+    }
+}
+
+function updateLiveSmartLogs(runningTests) {
+    runningTests.forEach(test => {
+        const progressEl = document.getElementById(`progress-${test.drive}`);
+        const logEl = document.getElementById(`log-${test.drive}`);
+        if (progressEl) progressEl.innerText = test.progress;
+        if (logEl) logEl.innerText = test.log;
+    });
 }
 
 function rebuildUI(disks, runningTests) {
@@ -87,7 +111,7 @@ function rebuildUI(disks, runningTests) {
         const serial = disk.serial ? disk.serial.trim() : 'N/A';
         const driveName = disk.name;
 
-        const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+        const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
         const card = document.createElement('div');
@@ -108,10 +132,10 @@ function rebuildUI(disks, runningTests) {
                             <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
                                 <strong>Path:</strong> ${disk.path} | <strong>Size:</strong> ${formatBytes(diskSize)} | <strong>S/N:</strong> ${serial}
                             </p>
-                            <div style="font-family: monospace; font-size: 14px; color: var(--accent-green); margin-top: 8px;">
+                            <div id="progress-${driveName}" style="font-family: monospace; font-size: 14px; color: var(--accent-green); margin-top: 8px;">
                                 ${activeTest.progress}
                             </div>
-                            <div class="log-output" style="margin-top: 8px;">${activeTest.log}</div>
+                            <div id="log-${driveName}" class="log-output" style="margin-top: 8px;">${activeTest.log}</div>
                         </div>
                     </div>
                     <div style="padding-left: 15px;">
@@ -179,6 +203,7 @@ function rebuildUI(disks, runningTests) {
     if (availableCount === 0 && activeCount === 0) {
         availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives.</p>';
     }
+    if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
 
 
@@ -262,48 +287,67 @@ function renderSmartTable(data) {
 async function startSelectedTests() {
     const testType = document.getElementById('test-type').value;
     if (selectedDrives.length === 0) {
-        alert("Please select at least one drive to start a test.");
+        customAlert("Please select at least one drive to start a test.");
         return;
     }
 
     const userFriendlyType = testType === 'long' ? 'Extended' : 'Short';
-    if (!confirm(`Are you sure you want to start a ${userFriendlyType} S.M.A.R.T. test on ${selectedDrives.length} drive(s)?`)) return;
-
-    try {
-        const response = await fetch('/api/smart/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ drives: selectedDrives, test_type: testType })
-        });
-        const result = await response.json();
-        if (result.status !== 'success') {
-            alert(`Error starting tests: ${result.message}`);
+    customConfirm(`Are you sure you want to start a ${userFriendlyType} S.M.A.R.T. test on ${selectedDrives.length} drive(s)?`, async () => {
+        const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+        const debugConsole = document.getElementById('debug-console');
+        const debugOutput = document.getElementById('debug-output');
+        if (isDebug && debugConsole && debugOutput) {
+            debugConsole.style.display = 'block';
+            debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Initiate clicked. Sending request...<br>`;
         }
-    } catch (error) {
-        console.error(`Failed to start tests:`, error);
-        alert(`Network error while trying to start the tests.`);
-    }
-    
-    selectedDrives = [];
-    fetchData();
+
+        const payload = { drives: selectedDrives, test_type: testType };
+        if (isDebug && debugOutput) {
+            debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
+        }
+
+        try {
+            const response = await fetch('/api/smart/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (isDebug && debugOutput && result.debug) {
+                debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
+            }
+
+            if (result.status !== 'success') {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message}<br>`;
+                customAlert(`Error starting tests: ${result.message}`);
+            } else {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
+            }
+        } catch (error) {
+            console.error(`Failed to start tests:`, error);
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${error}<br>`;
+            customAlert(`Network error while trying to start the tests.`);
+        }
+        
+        selectedDrives = [];
+    });
 }
 
 window.stopTest = async function(containerName) {
-    if (!confirm("Are you sure you want to abort this test?")) return;
-
-    try {
-        const response = await fetch('/api/smart/stop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ container_name: containerName })
-        });
-        const result = await response.json();
-        if (result.status !== 'success') {
-            alert("Error stopping test: " + result.message);
+    customConfirm("Are you sure you want to abort this test?", async () => {
+        try {
+            const response = await fetch('/api/smart/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_name: containerName })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                customAlert("Error stopping test: " + result.message);
+            }
+        } catch (error) {
+            console.error("Failed to stop test:", error);
+            customAlert("Network error while trying to stop the test.");
         }
-        fetchData();
-    } catch (error) {
-        console.error("Failed to stop test:", error);
-        alert("Network error while trying to stop the test.");
-    }
+    });
 };

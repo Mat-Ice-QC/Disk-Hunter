@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-import subprocess
+import asyncio
 import os
 
 app = FastAPI()
@@ -17,16 +17,26 @@ async def get_smart_data(device_name: str):
 
     try:
         cmd = ["smartctl", "-a", device_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        # Run smartctl asynchronously to avoid blocking the event loop
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
         
+        stdout_str = stdout.decode('utf-8', errors='ignore')
+        stderr_str = stderr.decode('utf-8', errors='ignore')
+
         # smartctl returns non-zero for various reasons, but we still want the output if it exists.
-        # We can check for specific fatal errors if needed.
-        if "Device open failed" in result.stderr or "Unavailable" in result.stderr:
+        if "Device open failed" in stderr_str or "Unavailable" in stderr_str:
              raise HTTPException(status_code=404, detail=f"Device {device_name} could not be opened by smartctl.")
 
-        return {"device": device_name, "smart_data": result.stdout or result.stderr}
+        return {"device": device_name, "smart_data": stdout_str or stderr_str}
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="smartctl command not found inside the smart-provider container.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred in smart-provider: {str(e)}")
 

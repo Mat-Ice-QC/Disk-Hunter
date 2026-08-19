@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-RUN apt-get update && apt-get install -y --no-install-recommends docker-ce-cli parted && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends docker-ce-cli parted e2fsprogs dosfstools ntfs-3g && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

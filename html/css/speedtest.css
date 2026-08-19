@@ -1,0 +1,11 @@
+/* html/css/speedtest.css */
+
+/* --- Controls --- */
+.speedtest-controls { margin-bottom: 20px; padding: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; }
+.speedtest-controls label { margin-right: 10px; font-weight: 600; color: var(--text-muted); }
+.partition-select { margin-top: 10px; width: 100%; padding: 10px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; outline: none; }
+.partition-select:focus { border-color: var(--primary); }
+
+/* --- Drive Card Modifiers --- */
+.drive-card.read-only { opacity: 0.7; pointer-events: none; filter: grayscale(50%); }
+.drive-card.read-only .drive-info h3::after { content: " (Read-Only)"; color: var(--accent-red); font-size: 12px; margin-left: 10px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3); }

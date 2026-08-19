@@ -3,11 +3,25 @@ import subprocess
 import json
 import re
 import httpx
+import time
+import os
+
+smart_attributes_cache = {}  # maps disk_name -> (timestamp, parsed_data)
+CACHE_DURATION = 30.0  # seconds
 
 router = APIRouter()
 
-def parse_smart_attributes(output):
-    """Parses smartctl -a output for specific attributes."""
+def parse_smart_attributes(output: str) -> dict:
+    """
+    Parses the raw text output of 'smartctl -a' into a structured dictionary.
+    
+    Args:
+        output (str): The stdout from the smartctl command.
+        
+    Returns:
+        dict: A structured dictionary containing overall health, reallocated sectors,
+              pending sectors, and a list of detailed S.M.A.R.T. attributes.
+    """
     if not output:
         return {"health": "Not Supported", "reallocated_sectors": 0, "pending_sectors": 0, "attributes": []}
     
@@ -70,53 +84,88 @@ def parse_smart_attributes(output):
                     continue # Ignore malformed lines
     return attributes
 
+def resolve_physical_disk(dev_path: str) -> str | None:
+    """
+    Recursively follows device-mapper/LVM paths and partition numbers
+    to resolve the final underlying physical disk name (e.g. /dev/sda).
+    """
+    if not dev_path or not dev_path.startswith("/dev/"):
+        return None
+    
+    # Resolve any symlinks (like /dev/mapper/vg-root -> /dev/dm-0)
+    real_path = os.path.realpath(dev_path)
+    dev_name = real_path.split("/")[-1]
+    
+    # Check LVM/LUKS virtual block device slaves recursively
+    slaves_dir = f"/sys/class/block/{dev_name}/slaves"
+    if os.path.exists(slaves_dir):
+        try:
+            slaves = os.listdir(slaves_dir)
+            if slaves:
+                resolved = resolve_physical_disk(f"/dev/{slaves[0]}")
+                if resolved:
+                    return resolved
+        except Exception:
+            pass
+            
+    # Remove partition suffix (e.g. nvme0n1p2 -> nvme0n1, sda1 -> sda)
+    # Check NVMe format first: nvme[number]n[number]p[number]
+    nvme_part_match = re.match(r"^(nvme\d+n\d+)p\d+$", dev_name)
+    if nvme_part_match:
+        return f"/dev/{nvme_part_match.group(1)}"
+        
+    # Check standard partitions: sd[letter][number]
+    std_part_match = re.match(r"^([a-zA-Z]+)\d+$", dev_name)
+    if std_part_match:
+        return f"/dev/{std_part_match.group(1)}"
+        
+    return real_path
+
 @router.get("/api/disks")
 async def get_disks(exclude_root: bool = False):
+    """
+    Retrieves all connected block storage devices using the 'lsblk' command.
+    Optionally attempts to filter out the root operating system drive to prevent accidental modification.
+    """
     try:
-        cmd = ["lsblk", "-b", "-J", "-o", "NAME,PATH,SIZE,TYPE,FSTYPE,PTTYPE,TRAN,MODEL,SERIAL,MOUNTPOINT,LABEL,PARTTYPENAME,FSVER,VENDOR"]
+        cmd = ["lsblk", "-b", "-J", "-o", "NAME,PATH,SIZE,TYPE,FSTYPE,PTTYPE,TRAN,MODEL,SERIAL,MOUNTPOINT,LABEL,PARTTYPENAME,FSVER,VENDOR,RO,ROTA"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
         
+        # Filter out loopback devices (like snap mounts) and ensure it's an actual disk
         disks = [d for d in data.get('blockdevices', []) if d.get('type') == 'disk' and not d.get('name', '').startswith('loop') and d.get('size', 0) > 0]
         
-        if exclude_root:
-            root_drive = None
-            try:
-                # Find device for /app/data which is mounted from host
-                df_res = subprocess.run(["df", "/app/data", "--output=source"], capture_output=True, text=True)
+        root_drive = None
+        try:
+            # Heuristic 1: Find the underlying device for /app/data which is mounted from the host OS
+            df_res = subprocess.run(["df", "/app/data", "--output=source"], capture_output=True, text=True)
+            lines = df_res.stdout.strip().split('\n')
+            if len(lines) > 1:
+                dev_path = lines[1].strip()
+                if dev_path and dev_path != "overlay":
+                    root_drive = resolve_physical_disk(dev_path)
+            
+            # Heuristic 2: If the first check fails (e.g., using overlayfs), try finding the mount for /etc/resolv.conf
+            if not root_drive or root_drive == "overlay":
+                df_res = subprocess.run(["df", "/etc/resolv.conf", "--output=source"], capture_output=True, text=True)
                 lines = df_res.stdout.strip().split('\n')
                 if len(lines) > 1:
                     dev_path = lines[1].strip()
-                    # Strip partition numbers
-                    match = re.match(r"(/dev/[a-zA-Z0-9]+?)(p\d+|\d+)$", dev_path)
-                    if match:
-                        root_drive = match.group(1)
-                    elif dev_path.startswith("/dev/"):
-                        root_drive = dev_path
-                
-                # Also try /etc/resolv.conf as fallback
-                if not root_drive or root_drive == "overlay":
-                    df_res = subprocess.run(["df", "/etc/resolv.conf", "--output=source"], capture_output=True, text=True)
-                    lines = df_res.stdout.strip().split('\n')
-                    if len(lines) > 1:
-                        dev_path = lines[1].strip()
-                        match = re.match(r"(/dev/[a-zA-Z0-9]+?)(p\d+|\d+)$", dev_path)
-                        if match:
-                            root_drive = match.group(1)
-                        elif dev_path.startswith("/dev/"):
-                            root_drive = dev_path
+                    if dev_path and dev_path != "overlay":
+                        root_drive = resolve_physical_disk(dev_path)
 
-            except Exception:
-                pass
-            
-            if root_drive:
-                # Sometimes df returns something like /dev/root, in which case we might not match accurately
-                # So also check for partitions with mountpoints inside the lsblk output
-                pass
+        except Exception:
+            pass
 
-            # Filter out the root drive by path
-            if root_drive and root_drive != "overlay":
-                disks = [d for d in disks if d.get('path') != root_drive]
+        # Tag each disk indicating if it is the primary host OS root disk
+        for d in disks:
+            if root_drive and d.get('path') == root_drive:
+                d['is_root'] = True
+            else:
+                d['is_root'] = False
+
+        if exclude_root:
+            disks = [d for d in disks if not d.get('is_root', False)]
             
             # Additional heuristic: filter out drive containing a partition mounted at / or /etc/resolv.conf
             # by inspecting lsblk tree if possible, but df approach is usually better in docker.
@@ -141,12 +190,23 @@ async def get_disk_smart_data(disk_name: str):
 
 @router.get("/api/disks/{disk_name}/smart-attributes")
 async def get_disk_smart_attributes(disk_name: str):
+    """
+    Retrieves and parses SMART attributes for a specific disk.
+    Caches the results in memory for 30 seconds to prevent hammering the drive.
+    """
+    now = time.time()
+    if disk_name in smart_attributes_cache:
+        cached_time, cached_data = smart_attributes_cache[disk_name]
+        if now - cached_time < CACHE_DURATION:
+            return {"status": "success", "data": cached_data}
+
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(f"http://localhost:8001/smartdata/{disk_name}", timeout=10.0)
             if res.status_code == 200:
                 smart_data_full = res.json().get("smart_data", "")
                 parsed_data = parse_smart_attributes(smart_data_full)
+                smart_attributes_cache[disk_name] = (now, parsed_data)
                 return {"status": "success", "data": parsed_data}
             else:
                 return {"status": "error", "message": res.text}
