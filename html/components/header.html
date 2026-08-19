@@ -5,8 +5,15 @@
 </div>
 <div class="sys-info">
     <div class="info-pill"><span class="time-icon">🕒</span> <span id="sys-time">--</span></div>
-    <div class="info-pill" style="padding: 4px 8px; margin-left: 10px;">
-        <select id="lang-select" style="background:transparent; border:none; color:white; font-size:13px; font-weight:600; cursor:pointer; outline:none; margin-left:4px;">
+    <a href="docs.html" class="header-docs-btn" id="btn-header-docs" data-tooltip="View Documentation">
+        <span class="doc-icon">📖</span>
+        <span data-i18n="nav_docs">Documentation</span>
+    </a>
+    <button class="header-docs-btn" id="btn-layout-toggle" data-tooltip="Toggle Layout">
+        <span id="layout-toggle-text">Grid View</span>
+    </button>
+    <div class="info-pill lang-pill">
+        <select id="lang-select">
             <option value="en" style="background:#0f172a;">EN</option>
             <option value="fr" style="background:#0f172a;">FR</option>
             <option value="es" style="background:#0f172a;">ES</option>

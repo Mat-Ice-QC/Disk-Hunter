@@ -1,7 +1,7 @@
 import json
 import os
 from fastapi import APIRouter
-from .config import HISTORY_FILE, SMARTCTL_HISTORY_FILE
+from .config import HISTORY_FILE, SMARTCTL_HISTORY_FILE, REPORTS_DIR, PARTITION_HISTORY_FILE
 
 router = APIRouter()
 
@@ -216,6 +216,46 @@ def clear_iso_history():
         with open(ISO_HISTORY_FILE, "w") as f:
             json.dump([], f)
         return {"status": "success", "message": "ISO logs cleared successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def append_partition_history(entry):
+    try:
+        history = []
+        if os.path.exists(PARTITION_HISTORY_FILE):
+            try:
+                with open(PARTITION_HISTORY_FILE, "r") as f:
+                    content = f.read().strip()
+                    if content:
+                        history = json.loads(content)
+            except Exception:
+                history = []
+        history.insert(0, entry)
+        with open(PARTITION_HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=4)
+    except Exception as e:
+        print(f"Failed to save partition history: {e}")
+
+@router.get("/api/partition-history")
+def get_partition_history():
+    try:
+        if not os.path.exists(PARTITION_HISTORY_FILE):
+            return {"status": "success", "history": []}
+        with open(PARTITION_HISTORY_FILE, "r") as f:
+            content = f.read().strip()
+            if not content:
+                return {"status": "success", "history": []}
+            f.seek(0)
+            return {"status": "success", "history": json.load(f)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.delete("/api/partition-history/clear")
+def clear_partition_history():
+    try:
+        with open(PARTITION_HISTORY_FILE, "w") as f:
+            json.dump([], f)
+        return {"status": "success", "message": "Partition logs cleared successfully."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

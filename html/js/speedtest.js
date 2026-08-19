@@ -9,6 +9,21 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('create-partition-modal').classList.remove('active');
     });
     document.getElementById('btn-confirm-partition').addEventListener('click', createPartition);
+
+    // Show/hide API Debug Console based on settings
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    if (debugConsole) {
+        if (isDebug) {
+            debugConsole.style.display = 'block';
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
+            }
+        } else {
+            debugConsole.style.display = 'none';
+        }
+    }
 });
 
 
@@ -113,7 +128,7 @@ function rebuildUI(disks, runningTests) {
         const driveName = disk.name;
         const isReadOnly = disk.ro === true || disk.ro === "1";
 
-        const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+        const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
         const activeTest = runningTests.find(test => test.drive === driveName || (disk.children && disk.children.some(c => c.name === test.drive)));
@@ -225,6 +240,7 @@ function rebuildUI(disks, runningTests) {
     if (availableCount === 0 && activeCount === 0) {
         availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives.</p>';
     }
+    if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
 
 let pendingPartitionDrive = null;

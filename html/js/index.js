@@ -1,7 +1,19 @@
 /* html/js/index.js */
 
 let previousDisksHash = "";
-window.smartStatusCache = window.smartStatusCache || {};
+try {
+    window.smartStatusCache = JSON.parse(sessionStorage.getItem('dh_smart_cache')) || {};
+} catch (e) {
+    window.smartStatusCache = {};
+}
+
+function getCachedSmartStatus(diskName) {
+    const cached = window.smartStatusCache[diskName];
+    if (cached && cached.timestamp && (Date.now() - cached.timestamp < 30000)) {
+        return cached.data;
+    }
+    return null;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Immediate HTTP scan fallback
@@ -225,8 +237,8 @@ function renderDisks(disksInput) {
         
         // Choose initial LED class from cached SMART health if available
         let initialLedClass = 'led-normal';
-        if (window.smartStatusCache && window.smartStatusCache[disk.name]) {
-            const cachedData = window.smartStatusCache[disk.name];
+        const cachedData = getCachedSmartStatus(disk.name);
+        if (cachedData) {
             const health = cachedData.health || 'Unknown';
             const healthLower = health.toLowerCase();
             if (healthLower.includes('passed') || healthLower.includes('ok') || healthLower.includes('good')) {
@@ -253,7 +265,7 @@ function renderDisks(disksInput) {
             glowClass = 'glow-sata';
         }
 
-        const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+        const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const imgElement = `
             <div class="drive-illustration">
                 <img src="${imageUrl}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover; display: none; z-index: 5;" onload="this.style.display='block';" alt="Drive Cover Image">
@@ -334,8 +346,7 @@ function renderDisks(disksInput) {
         card.id = `drive-card-${disk.name}`;
         card.dataset.activeOp = 'false';
         let smartBadgeHtml = '';
-        if (window.smartStatusCache && window.smartStatusCache[disk.name]) {
-            const cachedData = window.smartStatusCache[disk.name];
+        if (cachedData) {
             const health = cachedData.health || 'Unknown';
             const healthLower = health.toLowerCase();
             if (healthLower.includes('passed') || healthLower.includes('ok') || healthLower.includes('good')) {
@@ -392,6 +403,7 @@ function renderDisks(disksInput) {
 
     // Restore statuses for any active operations
     updateOperationsUI();
+    if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
 
 function applySmartStatusToBadge(badge, diskName, data) {
@@ -423,8 +435,9 @@ async function loadSmartStatus(diskName) {
     const badge = document.getElementById(`smart-badge-${diskName}`);
     if (!badge) return;
 
-    if (window.smartStatusCache[diskName]) {
-        applySmartStatusToBadge(badge, diskName, window.smartStatusCache[diskName]);
+    const cachedData = getCachedSmartStatus(diskName);
+    if (cachedData) {
+        applySmartStatusToBadge(badge, diskName, cachedData);
         return;
     }
 
@@ -433,7 +446,15 @@ async function loadSmartStatus(diskName) {
         const result = await response.json();
         
         if (result.status === 'success' && result.data) {
-            window.smartStatusCache[diskName] = result.data;
+            window.smartStatusCache[diskName] = {
+                timestamp: Date.now(),
+                data: result.data
+            };
+            try {
+                sessionStorage.setItem('dh_smart_cache', JSON.stringify(window.smartStatusCache));
+            } catch (err) {
+                console.error("Failed to save S.M.A.R.T cache:", err);
+            }
             applySmartStatusToBadge(badge, diskName, result.data);
         } else {
             badge.className = 'badge-smart unsupported';

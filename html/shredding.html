@@ -20,8 +20,13 @@
                     <h2 class="title-danger" data-i18n="title_disk_shredding">Disk Shredding</h2>
                     <p data-i18n="shredding_desc">Select drives via checkboxes, configure your wipe standard, and execute.</p>
                     
+                    <div class="shred-ui-tabs">
+                        <button class="shred-ui-tab active" data-shred-tab="standard" data-i18n="shred_tab_standard">Block-Level</button>
+                        <button class="shred-ui-tab" data-shred-tab="nvme" data-i18n="shred_tab_nvme">NVMe Secure Erase</button>
+                    </div>
+
                     <div class="config-box">
-                        <label class="shred-label" data-i18n="wipe_algorithm">Wipe Algorithm</label>
+                        <label class="shred-label"><span data-i18n="wipe_algorithm">Wipe Algorithm</span><span class="help-indicator" data-tooltip="<strong>Sanitization Standard</strong><br>Select from multiple standard shredding protocols including DoD 5220.22-M, Gutmann, or direct hardware Secure Erase.">?</span></label>
                         <select id="wipe-method" class="shred-select">
                             <option value="zero" data-i18n="method_zero">Fill With Zeros (1 Pass)</option>
                             <option value="dodshort" data-i18n="method_dodshort" selected>DoD Short 5220.22-M (3 Passes)</option>
@@ -33,12 +38,14 @@
                             <option value="prng" data-i18n="method_prng">PRNG Stream (Random Pass)</option>
                         </select>
 
-                        <label class="shred-label" data-i18n="verification">Verification</label>
-                        <select id="wipe-verify" class="shred-select">
-                            <option value="off" data-i18n="verify_off">No Verification</option>
-                            <option value="last" data-i18n="verify_last" selected>Verify Last Pass Only</option>
-                            <option value="all" data-i18n="verify_all">Verify All Passes (Very Slow)</option>
-                        </select>
+                        <div id="verification-wrapper">
+                            <label class="shred-label"><span data-i18n="verification">Verification</span><span class="help-indicator" data-tooltip="<strong>Write Verification</strong><br>Determine whether to verify data blocks after wiping passes to confirm erasure.">?</span></label>
+                            <select id="wipe-verify" class="shred-select">
+                                <option value="off" data-i18n="verify_off">No Verification</option>
+                                <option value="last" data-i18n="verify_last" selected>Verify Last Pass Only</option>
+                                <option value="all" data-i18n="verify_all">Verify All Passes (Very Slow)</option>
+                            </select>
+                        </div>
 
                         <button id="btn-initiate-wipe" data-i18n="btn_initiate_destruction" class="btn-shred">Initiate Destruction</button>
                     </div>

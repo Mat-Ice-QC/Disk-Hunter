@@ -156,13 +156,8 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
 
 @router.get("/api/speedtest/logs/{container_name}")
 def get_speedtest_logs(container_name: str):
-    # Basic security check on container name
-    if not re.match(r"^disk_hunter_speedtest_[a-zA-Z0-9_.-]+--[a-zA-Z0-9()._ -]+--[a-zA-Z0-9_.-]+--[a-zA-Z0-9_.-]+$", container_name):
-        # We need to allow spaces and parens for sizes e.g. Read (10G)
-        # Actually container names only have alphanumerics and dashes/underscores from our formatting, let's just make it broad
-        pass
-        
-    if not container_name.startswith("disk_hunter_speedtest_"):
+    # Strict validation of container name format to prevent path traversal or flag injection
+    if not re.match(r"^disk_hunter_speedtest_[a-zA-Z0-9_.-]+$", container_name):
         return {"status": "error", "message": "Invalid container name format."}
 
     log_dir = "/app/data/speedtest/logs/container_logs"
@@ -186,19 +181,33 @@ def get_speedtest_logs(container_name: str):
 
 @router.post("/api/speedtest/start")
 def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks, http_request: Request):
+    """Starts sequential read/write speed benchmarking tests on selected drives.
+    
+    Args:
+        request (SpeedtestRequest): The target drives, size, and test type (read/write).
+        background_tasks (BackgroundTasks): FastAPI background task manager.
+        http_request (Request): The incoming HTTP request.
+        
+    Returns:
+        dict: A status dictionary containing success/error state and debug logs.
+    """
+    debug_logs = []
     try:
         ip = http_request.client.host if http_request.client else "Unknown"
+        debug_logs.append(f"Received SpeedtestRequest payload from {ip}: {request.dict()}")
         test_type = request.test_type
         start_time = get_local_time(request.timezone)
 
         for drive in request.drives:
             drive_sizes = ["1G", "10G", "100G"] if request.size == "all" else [request.size]
+            debug_logs.append(f"Processing target partition: {drive}")
 
             if request.size == "all":
                 try:
                     s_cmd = ["lsblk", "-n", "-b", "-o", "SIZE", drive]
+                    debug_logs.append(f"Running command: {' '.join(s_cmd)}")
                     s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                    if s_res.stdout.strip().isdigit():
+                    if s_res.returncode == 0 and s_res.stdout.strip().isdigit():
                         size_bytes = int(s_res.stdout.strip())
                         GB = 1024 * 1024 * 1024
                         valid_sizes = ["1G"]
@@ -207,14 +216,20 @@ def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks
                         if size_bytes >= 101 * GB:
                             valid_sizes.append("100G")
                         drive_sizes = valid_sizes
+                        debug_logs.append(f"Calculated valid sizes for speed test: {drive_sizes}")
+                    else:
+                        debug_logs.append(f"lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
                 except Exception as e:
+                    debug_logs.append(f"Exception running size discovery: {str(e)}")
                     logging.warning(f"Could not determine size for {drive}: {e}")
 
             drive_name = drive.split('/')[-1]
 
             cmd = ["docker", "ps", "-q", "--format", "{{.Names}}", "--filter", f"name=disk_hunter_speedtest_{drive_name}--"]
+            debug_logs.append(f"Checking for running test container: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.stdout.strip():
+                debug_logs.append(f"Speed test already running for {drive} inside container {result.stdout.strip()}, skipping.")
                 logging.info(f"Speed test already running for {drive}, skipping.")
                 continue
 
@@ -223,15 +238,26 @@ def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks
                 # To get serial of a partition like /dev/sda1, we need to query its parent disk /dev/sda
                 parent_drive = re.sub(r'\d+$', '', drive)
                 s_cmd = ["lsblk", "-n", "-o", "SERIAL", parent_drive]
+                debug_logs.append(f"Querying parent disk {parent_drive} serial: {' '.join(s_cmd)}")
                 s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                if s_res.stdout.strip():
+                if s_res.returncode == 0 and s_res.stdout.strip():
                     serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', s_res.stdout.strip())
-            except Exception:
-                pass
+                    debug_logs.append(f"Found parent disk serial: {serial}")
+                else:
+                    debug_logs.append(f"Parent lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
+            except Exception as e:
+                debug_logs.append(f"Exception running parent disk lsblk command: {str(e)}")
             
+            # Log container command plan
+            for size in drive_sizes:
+                container_name = f"disk_hunter_speedtest_{drive_name}--{test_type}--{size}--{serial}"
+                debug_logs.append(f"Plan: Spawn speedtest container '{container_name}' with image 'disk-hunter-speedtest'")
+                debug_logs.append(f"Planned run args: drive={drive}, test_type={test_type}, size={size}")
+
             background_tasks.add_task(run_speedtest_sequence, drive, serial, test_type, drive_sizes, request.timezone, start_time, ip)
 
-        return {"status": "success", "message": f"Started {test_type} test on selected drives."}
+        return {"status": "success", "message": f"Started {test_type} test on selected drives.", "debug": debug_logs}
     except Exception as e:
+        debug_logs.append(f"Exception raised in start_speedtest endpoint: {str(e)}")
         logging.error(f"Error starting Speed test: {e}")
-        return {"status": "error", "message": f"System error: {str(e)}"}
+        return {"status": "error", "message": f"System error: {str(e)}", "debug": debug_logs}

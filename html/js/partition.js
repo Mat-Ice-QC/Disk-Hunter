@@ -15,6 +15,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Show/hide API Debug Console based on settings
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    if (debugConsole) {
+        if (isDebug) {
+            debugConsole.style.display = 'block';
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
+            }
+        } else {
+            debugConsole.style.display = 'none';
+        }
+    }
 });
 
 async function fetchDrives() {
@@ -26,18 +41,17 @@ async function fetchDrives() {
 
         if (data.status === 'success' && data.disks.length > 0) {
             selector.innerHTML = '';
-            data.disks.forEach(disk => {
+            const filteredDisks = data.disks.filter(disk => !(protectRoot && disk.is_root));
+            filteredDisks.forEach(disk => {
                 const li = document.createElement('div');
                 li.className = 'drive-card';
-                li.style.flexDirection = 'row';
-                li.style.alignItems = 'center';
 
                 const rawVendor = disk.vendor ? disk.vendor.trim() + ' ' : '';
                 const rawModel = disk.model ? disk.model.trim() : 'Unknown';
                 const fullName = rawVendor + rawModel;
                 const normalizedId = fullName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-                const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+                const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
                 const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22 style=%22background-color:%231e293b; border-radius: 4px;%22%3E%3Ctext fill=%22%2394a3b8%22 x=%2250%25%22 y=%2250%25%22 font-family=%22sans-serif%22 font-weight=%22bold%22 font-size=%2230%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
                 let partitionsHtml = '';
@@ -84,6 +98,7 @@ async function fetchDrives() {
         } else {
             selector.innerHTML = '<li>No drives found.</li>';
         }
+        if (window.applyGlobalLayout) window.applyGlobalLayout();
     } catch (e) {
         console.error(e);
         document.getElementById('drive-selector').innerHTML = '<li style="color: red;">Error fetching drives</li>';
@@ -292,6 +307,7 @@ async function loadPartitions() {
 
                     document.getElementById('mkpart-start-bytes').value = 0;
                     document.getElementById('mkpart-max-bytes').value = totalDiskSize;
+                    document.getElementById('mkpart-is-end').value = 'true';
                     document.getElementById('mkpart-unit').value = 'MAX';
                     document.getElementById('mkpart-size').value = '';
                     document.getElementById('mkpart-size').disabled = true;

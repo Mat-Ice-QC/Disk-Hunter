@@ -22,14 +22,14 @@
                     <p>Benchmark read/write sequential speeds to verify drive performance.</p>
                     
                     <div class="config-box">
-                        <label class="shred-label">Test Type</label>
+                        <label class="shred-label"><span>Test Type</span><span class="help-indicator" data-tooltip="<strong>Test Operation</strong><br>Select Read Only, Write Only, or Read & Write speedtest sequence. Note that Write actions create a temporary file inside the partition.">?</span></label>
                         <select id="speedtest-type" class="shred-select">
                             <option value="read" selected>Read Only</option>
                             <option value="write">Write Only</option>
                             <option value="rw">Read & Write</option>
                         </select>
 
-                        <label class="shred-label" style="margin-top: 15px;">Test Size</label>
+                        <label class="shred-label" style="margin-top: 15px;"><span>Test Size</span><span class="help-indicator" data-tooltip="<strong>Test Block Volume</strong><br>Select the file size volume to write/read. Larger files take longer but offer more accurate sustain rates.">?</span></label>
                         <select id="speedtest-size" class="shred-select">
                             <option value="1G" selected>1 GB</option>
                             <option value="10G">10 GB</option>
@@ -52,6 +52,11 @@
                     <h3>Available Drives</h3>
                     <div id="drive-list-container" class="drive-list-grid mt-15">
                         <p>Scanning hardware...</p>
+                    </div>
+
+                    <div id="debug-console" style="margin-top: 30px;">
+                        <div class="debug-header">API DEBUG TERMINAL</div>
+                        <div id="debug-output">Awaiting execution...</div>
                     </div>
                 </div>
             </div>

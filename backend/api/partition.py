@@ -1,16 +1,29 @@
 import subprocess
 import logging
-from fastapi import APIRouter
+import re
+from fastapi import APIRouter, Request
 from .models import PartitionActionRequest
+from .history import append_partition_history
+from .system import get_local_time
 
 router = APIRouter()
 
-def run_parted(drive: str, args: list[str]):
+def run_parted(drive: str, args: list[str], debug_list: list = None):
     cmd = ["parted", "-s", "-m", drive] + args
+    if debug_list is not None:
+        debug_list.append(f"Running command: {' '.join(cmd)}")
     try:
         res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        if debug_list is not None:
+            debug_list.append(f"Command exit code: {res.returncode}")
+            if res.stdout:
+                debug_list.append(f"Command stdout: {res.stdout.strip()}")
+            if res.stderr:
+                debug_list.append(f"Command stderr: {res.stderr.strip()}")
         return res
     except subprocess.TimeoutExpired:
+        if debug_list is not None:
+            debug_list.append("Command timed out after 60 seconds")
         class FakeRes:
             returncode = 1
             stdout = ""
@@ -19,6 +32,8 @@ def run_parted(drive: str, args: list[str]):
 
 @router.get("/api/partitions")
 def get_partitions(drive: str):
+    if not re.match(r"^/dev/[a-zA-Z0-9_-]+$", drive):
+        return {"status": "error", "message": "Invalid device path format."}
     try:
         res = run_parted(drive, ["unit", "B", "print"])
         if res.returncode != 0:
@@ -72,8 +87,25 @@ def get_partitions(drive: str):
         return {"status": "error", "message": str(e)}
 
 @router.post("/api/partitions/action")
-def partition_action(req: PartitionActionRequest):
+def partition_action(req: PartitionActionRequest, http_request: Request):
+    """Executes partition operations (mklabel, mkpart, format, delete, flags) on a target drive.
+    
+    Args:
+        req (PartitionActionRequest): The request parameters containing drive path, action type, and parameters.
+        http_request (Request): The incoming HTTP request.
+        
+    Returns:
+        dict: A status dictionary containing success/error state and debug logs.
+    """
+    debug_logs = []
+    ip = http_request.client.host if http_request.client else "Unknown"
+    start_time = get_local_time()
+
+    if not re.match(r"^/dev/[a-zA-Z0-9_-]+$", req.drive):
+        debug_logs.append(f"Error: Invalid device path format: {req.drive}")
+        return {"status": "error", "message": "Invalid device path format.", "debug": debug_logs}
     try:
+        debug_logs.append(f"Received PartitionActionRequest: drive={req.drive}, action={req.action}, params={req.params}")
         if req.action == "format":
             part_number = req.params[0]
             fs_type = req.params[1]
@@ -92,29 +124,104 @@ def partition_action(req: PartitionActionRequest):
                 mkfs_cmd.insert(1, "-f")
                 
             try:
+                debug_logs.append(f"Running command: {' '.join(mkfs_cmd)}")
                 res = subprocess.run(mkfs_cmd, capture_output=True, text=True, timeout=120)
+                debug_logs.append(f"Command exit code: {res.returncode}")
+                if res.stdout:
+                    debug_logs.append(f"Command stdout: {res.stdout.strip()}")
+                if res.stderr:
+                    debug_logs.append(f"Command stderr: {res.stderr.strip()}")
+                    
                 if res.returncode != 0:
-                    return {"status": "error", "message": res.stderr.strip() or res.stdout.strip()}
-                return {"status": "success", "message": f"Formatted {part_path} as {fs_type}"}
+                    append_partition_history({
+                        "timestamp": start_time,
+                        "event": f"Format partition {part_path} as {fs_type} failed",
+                        "drive": req.drive,
+                        "action": "format",
+                        "params": req.params,
+                        "username": ip,
+                        "status": "error"
+                    })
+                    return {"status": "error", "message": res.stderr.strip() or res.stdout.strip(), "debug": debug_logs}
+                
+                append_partition_history({
+                    "timestamp": start_time,
+                    "event": f"Formatted partition {part_path} as {fs_type}",
+                    "drive": req.drive,
+                    "action": "format",
+                    "params": req.params,
+                    "username": ip,
+                    "status": "success"
+                })
+                return {"status": "success", "message": f"Formatted {part_path} as {fs_type}", "debug": debug_logs}
             except subprocess.TimeoutExpired:
-                return {"status": "error", "message": "Formatting timed out"}
+                debug_logs.append("Command timed out after 120 seconds")
+                append_partition_history({
+                    "timestamp": start_time,
+                    "event": f"Format partition {part_path} as {fs_type} timed out",
+                    "drive": req.drive,
+                    "action": "format",
+                    "params": req.params,
+                    "username": ip,
+                    "status": "error"
+                })
+                return {"status": "error", "message": "Formatting timed out", "debug": debug_logs}
             
         else:
-            res = run_parted(req.drive, [req.action] + req.params)
+            res = run_parted(req.drive, [req.action] + req.params, debug_list=debug_logs)
             if res.returncode != 0:
                 err_msg = res.stderr.strip() or res.stdout.strip()
                 if req.action == "mkpart" and "closest location we can manage" in err_msg:
-                    import re
+                    debug_logs.append("Triggering partition alignment fallback...")
                     match = re.search(r"closest location we can manage is.*?\(sectors (\d+)\.\.(\d+)\)", err_msg)
                     if match:
                         start_s = f"{match.group(1)}s"
                         end_s = f"{match.group(2)}s"
                         new_params = [req.params[0], start_s, end_s]
-                        res2 = run_parted(req.drive, ["mkpart"] + new_params)
+                        res2 = run_parted(req.drive, ["mkpart"] + new_params, debug_list=debug_logs)
                         if res2.returncode == 0:
-                            return {"status": "success", "message": "Action completed successfully (aligned to nearest valid boundary)"}
+                            append_partition_history({
+                                "timestamp": start_time,
+                                "event": f"Partition action {req.action} completed (aligned)",
+                                "drive": req.drive,
+                                "action": req.action,
+                                "params": req.params,
+                                "username": ip,
+                                "status": "success"
+                            })
+                            return {"status": "success", "message": "Action completed successfully (aligned to nearest valid boundary)", "debug": debug_logs}
                         err_msg = res2.stderr.strip() or res2.stdout.strip()
-                return {"status": "error", "message": err_msg}
-            return {"status": "success", "message": "Action completed successfully"}
+                
+                append_partition_history({
+                    "timestamp": start_time,
+                    "event": f"Partition action {req.action} failed",
+                    "drive": req.drive,
+                    "action": req.action,
+                    "params": req.params,
+                    "username": ip,
+                    "status": "error"
+                })
+                return {"status": "error", "message": err_msg, "debug": debug_logs}
+            
+            append_partition_history({
+                "timestamp": start_time,
+                "event": f"Partition action {req.action} completed",
+                "drive": req.drive,
+                "action": req.action,
+                "params": req.params,
+                "username": ip,
+                "status": "success"
+            })
+            return {"status": "success", "message": "Action completed successfully", "debug": debug_logs}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        debug_logs.append(f"Exception raised in partition_action endpoint: {str(e)}")
+        append_partition_history({
+            "timestamp": start_time,
+            "event": f"Partition action {req.action} crashed",
+            "drive": req.drive,
+            "action": req.action,
+            "params": req.params,
+            "username": ip,
+            "status": "error"
+        })
+        return {"status": "error", "message": str(e), "debug": debug_logs}

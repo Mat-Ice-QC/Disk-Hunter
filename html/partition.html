@@ -59,7 +59,7 @@
                             data)</span></h4>
                     <div class="form-row">
                         <div>
-                            <label class="shred-label">Type</label>
+                            <label class="shred-label"><span>Type</span><span class="help-indicator" data-tooltip="<strong>Partition Table Standards</strong><br>GPT is standard for modern UEFI computers and disks larger than 2TB. MSDOS is for older BIOS computers (MBR).">?</span></label>
                             <select id="mklabel-type" class="shred-select">
                                 <option value="aix">aix</option>
                                 <option value="amiga">amiga</option>
@@ -83,7 +83,7 @@
                     <h4>Create Partition</h4>
                     <div class="form-row">
                         <div>
-                            <label class="shred-label">Type / Name</label>
+                            <label class="shred-label"><span>Type / Name</span><span class="help-indicator" data-tooltip="<strong>Partition Type/Name</strong><br>Determines the partition identifier or label description (e.g. primary, boot, recovery).">?</span></label>
                             <input type="text" id="mkpart-type" class="form-input-text" value="primary">
                         </div>
                         <div>
@@ -111,7 +111,7 @@
                     <input type="hidden" id="format-num">
                     <div class="form-row">
                         <div>
-                            <label class="shred-label">File System</label>
+                            <label class="shred-label"><span>File System</span><span class="help-indicator" data-tooltip="<strong>File System Format</strong><br>Select ext4 for Linux native, ntfs for modern Windows, or fat32 for universal compatibility.">?</span></label>
                             <select id="format-fs" class="shred-select">
                                 <option value="ext4">ext4</option>
                                 <option value="ext3">ext3</option>
@@ -195,6 +195,11 @@
                         </tr>
                     </tbody>
                 </table>
+
+                <div id="debug-console" style="margin-top: 30px;">
+                    <div class="debug-header">API DEBUG TERMINAL</div>
+                    <div id="debug-output">Awaiting execution...</div>
+                </div>
             </div> <!-- end modal-content -->
         </div> <!-- end modal-box -->
     </div>

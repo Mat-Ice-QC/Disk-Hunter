@@ -5,6 +5,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-download-iso').addEventListener('click', startDownload);
     document.getElementById('btn-write-iso').addEventListener('click', startWrite);
+
+    // Show/hide API Debug Console based on settings
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    if (debugConsole) {
+        if (isDebug) {
+            debugConsole.style.display = 'block';
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
+            }
+        } else {
+            debugConsole.style.display = 'none';
+        }
+    }
 });
 
 async function loadIsos() {
@@ -45,20 +60,41 @@ async function startDownload() {
         return;
     }
     
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    const debugOutput = document.getElementById('debug-output');
+    if (isDebug && debugConsole && debugOutput) {
+        debugConsole.style.display = 'block';
+        debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Download clicked. Sending request...<br>`;
+    }
+    
+    const payload = {url, filename};
+    if (isDebug && debugOutput) {
+        debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
+    }
+
     try {
         const res = await fetch('/api/iso/download', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url, filename})
+            body: JSON.stringify(payload)
         });
+        const result = await res.json();
+        
+        if (isDebug && debugOutput && result.debug) {
+            debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
+        }
+
         if(!res.ok) {
-            const err = await res.json();
-            customAlert("Error: " + err.detail);
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.detail || result.message}<br>`;
+            customAlert("Error: " + (result.detail || result.message));
         } else {
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message || 'Download started'}<br>`;
             document.getElementById('iso-url').value = '';
             document.getElementById('iso-filename').value = '';
         }
     } catch (e) {
+        if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${e}<br>`;
         customAlert("Request failed");
     }
 }
@@ -73,19 +109,40 @@ async function startWrite() {
     }
     
     customConfirm(`Are you absolutely sure you want to write ${filename} to /dev/${device}? ALL DATA WILL BE ERASED.`, async () => {
+        const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+        const debugConsole = document.getElementById('debug-console');
+        const debugOutput = document.getElementById('debug-output');
+        if (isDebug && debugConsole && debugOutput) {
+            debugConsole.style.display = 'block';
+            debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Write clicked. Sending request...<br>`;
+        }
+
+        const payload = {filename, device};
+        if (isDebug && debugOutput) {
+            debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
+        }
+
         try {
             const res = await fetch('/api/iso/write', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({filename, device})
+                body: JSON.stringify(payload)
             });
+            const result = await res.json();
+            
+            if (isDebug && debugOutput && result.debug) {
+                debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
+            }
+
             if(!res.ok) {
-                const err = await res.json();
-                customAlert("Error: " + err.detail);
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.detail || result.message}<br>`;
+                customAlert("Error: " + (result.detail || result.message));
             } else {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message || 'Write started'}<br>`;
                 // Success, wait for WebSocket updates
             }
         } catch (e) {
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${e}<br>`;
             customAlert("Request failed");
         }
     }, "DANGER: Confirm ISO Write");

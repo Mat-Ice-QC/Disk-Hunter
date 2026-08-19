@@ -245,13 +245,20 @@ async function loadDriveModels() {
 
         listDiv.innerHTML = '';
         uniqueModels.forEach(modelName => {
+            const disk = data.disks.find(d => {
+                const rawVendor = d.vendor ? d.vendor.trim() + ' ' : '';
+                const rawModel = d.model ? d.model.trim() : 'Unknown';
+                return (rawVendor + rawModel) === modelName;
+            });
             const normalizedId = modelName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
             const item = document.createElement('div');
             item.className = 'drive-item';
             
+            const queryParams = disk ? `?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}` : '';
+            
             item.innerHTML = `
                 <div class="drive-item-info">
-                    <img src="/api/images/drives/${normalizedId}.jpg" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'%3E%3Crect width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'/%3E%3C/svg%3E';">
+                    <img src="/api/images/drives/${normalizedId}.jpg${queryParams}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'%3E%3Crect width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'/%3E%3C/svg%3E';">
                     <span class="drive-item-name">${modelName}</span>
                 </div>
                 <button class="btn-assign" onclick="assignSelectedImage('${normalizedId}', this)">Assign Selected</button>
@@ -322,7 +329,15 @@ window.assignSelectedImage = async function(normalizedId, btnElement) {
             btnElement.innerText = "Assigned!";
             // Force reload the image next to it
             const imgEl = btnElement.previousElementSibling.querySelector('img');
-            if (imgEl) imgEl.src = `/api/images/drives/${normalizedId}.jpg?t=${new Date().getTime()}`;
+            if (imgEl) {
+                try {
+                    const urlObj = new URL(imgEl.src, window.location.origin);
+                    urlObj.searchParams.set('t', new Date().getTime());
+                    imgEl.src = urlObj.pathname + urlObj.search;
+                } catch (e) {
+                    imgEl.src = `/api/images/drives/${normalizedId}.jpg?t=${new Date().getTime()}`;
+                }
+            }
             setTimeout(() => { btnElement.innerText = originalText; btnElement.disabled = false; }, 2000);
         } else {
             customAlert(data.message || "Failed to assign.");

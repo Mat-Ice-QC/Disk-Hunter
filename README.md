@@ -46,6 +46,8 @@ Disk Hunter provides a sleek, modern glassmorphic dashboard interface for admini
 - **S.M.A.R.T. Diagnostics:** Run and monitor short/extended self-tests, check real-time progress metrics, and view structured attribute health tables.
 - **Visual Partition Editor:** Create, delete, and format partitions (ext3, ext4, fat32, ntfs) with an intuitive click-and-drag block interface powered by `parted`.
 - **OS Image Flashing:** Safely write downloaded `.iso` or `.img` OS installations directly to targeted devices.
+- **Onboard Help Center:** Access dynamic, modular on-site guides rendered from Markdown with localized translations and interactive callouts.
+- **Unified Glassmorphic UI:** Enjoy a consistent, responsive dark mode design utilizing custom alert and confirmation modal overrides instead of default browser dialogs.
 
 ---
 
@@ -133,15 +135,13 @@ docker compose up -d --build --force-recreate
 
 ## TODO / Future Features
 
-- **Onboard Documentation:** Add interactive, embedded help guides, tooltips, and documentation pages directly inside the web UI for on-site technicians.
 - **Active Directory / LDAP Integration:** Corporate user authentication and role-based access control (RBAC).
 - **Native NVMe Secure Erase Support:** Expand nvme-cli worker support to trigger hardware block formatting.
 - **Automated Report Emailing:** SMTP mailing service to dispatch PDF erasure certificates automatically.
 - **Bulk Firmware Updates:** Automate deploying vendor-specific firmware images across uniform drive batches.
-- **Disk Overview** Fix the fetching of smartdata always being called every refresh 
-- **Netework share / Disk browsing** Maybe make the module for drive browsing 
-- **Drive images fix** add default images for nvme / usb / ssd / hdd / sd...
-- **Security** do an audit on the whole code base 
-- **Pin package Versions** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
-- **Fix clear history buttons** clearing the history does not work through the ui
-- **Partition Editor UI** remake the partition editor ui, it does not look too good :(
+- **Disk Overview:** Fix the fetching of smartdata always being called every refresh.
+- **Network Share / Disk Browsing:** Establish a dedicated module for network drive browsing.
+- **Drive Images Fix:** Add default images for nvme, usb, ssd, hdd, sd, etc.
+- **Security:** Conduct a comprehensive audit of the entire codebase.
+- **Pin Package Versions:** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
+- **Partition Editor UI:** Remake the partition editor UI for an improved aesthetic layout.

@@ -4,10 +4,11 @@ let selectedDrives = [];
 let availableDisksData = [];
 let refreshInterval;
 let previousDiskStateHash = ""; 
+let activeShredTab = 'standard';
 
 document.addEventListener('dh-language-changed', () => {
     window.applyLocalization();
-    updateWipeMethodsSelect();
+    updateShredConfigUI();
     if (currentDisks && currentWipeStatus) {
         updateShreddingUI();
     }
@@ -17,7 +18,49 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-initiate-wipe').addEventListener('click', showConfirmationModal);
     document.getElementById('btn-cancel').addEventListener('click', hideModal);
     document.getElementById('btn-confirm').addEventListener('click', executeWipe);
+
+    // Tab switching event listeners
+    const tabButtons = document.querySelectorAll('.shred-ui-tab');
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetTab = btn.getAttribute('data-shred-tab');
+            if (activeShredTab === targetTab) return;
+
+            // Clear previous selections to prevent mixing incompatible targets
+            selectedDrives = [];
+            
+            tabButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            activeShredTab = targetTab;
+            
+            // Update UI config box elements
+            updateShredConfigUI();
+            
+            // Redraw available drives
+            if (currentDisks && currentWipeStatus) {
+                updateShreddingUI();
+            }
+        });
+    });
+
     window.applyLocalization();
+    updateShredConfigUI();
+
+    // Show/hide API Debug Console based on settings
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+    const debugConsole = document.getElementById('debug-console');
+    if (debugConsole) {
+        if (isDebug) {
+            debugConsole.style.display = 'block';
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
+            }
+        } else {
+            debugConsole.style.display = 'none';
+        }
+    }
 });
 
 let currentDisks = null;
@@ -42,59 +85,67 @@ function formatBytes(bytes, decimals = 1) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-function updateWipeMethodsSelect() {
+function updateShredConfigUI() {
     const select = document.getElementById('wipe-method');
+    const verifyWrapper = document.getElementById('verification-wrapper');
     if (!select) return;
 
-    const allSelectedAreNvme = selectedDrives.length > 0 && selectedDrives.every(path => {
-        const disk = availableDisksData.find(d => d.path === path);
-        if (!disk) return false;
-        const tran = (disk.tran || '').toLowerCase();
-        const name = (disk.name || '').toLowerCase();
-        return tran === 'nvme' || name.includes('nvme');
-    });
+    const prevVal = select.value;
+    select.innerHTML = '';
 
-    const allSelectedAreSata = selectedDrives.length > 0 && selectedDrives.every(path => {
-        const disk = availableDisksData.find(d => d.path === path);
-        if (!disk) return false;
-        const tran = (disk.tran || '').toLowerCase();
-        const name = (disk.name || '').toLowerCase();
-        return tran === 'sata' || name.startsWith('sd');
-    });
+    if (activeShredTab === 'nvme') {
+        if (verifyWrapper) verifyWrapper.style.display = 'none';
 
-    const hasNvmeUser = !!select.querySelector('option[value="nvme-user"]');
-    const hasAtaSecure = !!select.querySelector('option[value="ata-secure"]');
-    
-    // 1. Handle NVMe Options
-    if (allSelectedAreNvme) {
-        if (!hasNvmeUser) {
-            const optUser = document.createElement('option');
-            optUser.value = 'nvme-user';
-            optUser.setAttribute('data-i18n', 'method_nvme_user');
-            optUser.innerText = window.translate('method_nvme_user', 'NVMe Secure Erase (User Data Format)');
-            
-            const optCrypto = document.createElement('option');
-            optCrypto.value = 'nvme-crypto';
-            optCrypto.setAttribute('data-i18n', 'method_nvme_crypto');
-            optCrypto.innerText = window.translate('method_nvme_crypto', 'NVMe Secure Erase (Cryptographic Format)');
-            
-            select.appendChild(optUser);
-            select.appendChild(optCrypto);
+        const optUser = document.createElement('option');
+        optUser.value = 'nvme-user';
+        optUser.setAttribute('data-i18n', 'method_nvme_user');
+        optUser.innerText = window.translate('method_nvme_user', 'NVMe Secure Erase (User Data Format)');
+        
+        const optCrypto = document.createElement('option');
+        optCrypto.value = 'nvme-crypto';
+        optCrypto.setAttribute('data-i18n', 'method_nvme_crypto');
+        optCrypto.innerText = window.translate('method_nvme_crypto', 'NVMe Secure Erase (Cryptographic Format)');
+
+        select.appendChild(optUser);
+        select.appendChild(optCrypto);
+
+        if (prevVal === 'nvme-user' || prevVal === 'nvme-crypto') {
+            select.value = prevVal;
+        } else {
+            select.value = 'nvme-user';
         }
     } else {
-        if (hasNvmeUser) {
-            if (select.value === 'nvme-user' || select.value === 'nvme-crypto') {
-                select.value = 'dodshort';
-                select.dispatchEvent(new Event('change'));
-            }
-            select.querySelector('option[value="nvme-user"]')?.remove();
-            select.querySelector('option[value="nvme-crypto"]')?.remove();
-        }
-    }
+        if (verifyWrapper) verifyWrapper.style.display = 'block';
 
-    // 2. Handle ATA Options
-    if (allSelectedAreSata) {
-        if (!hasAtaSecure) {
+        const methods = [
+            { val: 'zero', i18n: 'method_zero', label: 'Fill With Zeros (1 Pass)' },
+            { val: 'dodshort', i18n: 'method_dodshort', label: 'DoD Short 5220.22-M (3 Passes)' },
+            { val: 'dod522022m', i18n: 'method_dod522022m', label: 'DoD Full 5220.22-M (7 Passes)' },
+            { val: 'gutmann', i18n: 'method_gutmann', label: 'Gutmann Wipe (35 Passes)' },
+            { val: 'ops2', i18n: 'method_ops2', label: 'RCMP TSSIT OPS-II (7 Passes)' },
+            { val: 'is5enh', i18n: 'method_is5enh', label: 'HMG IS5 Enhanced (3 Passes)' },
+            { val: 'schneier', i18n: 'method_schneier', label: 'Schneier Wipe (7 Passes)' },
+            { val: 'prng', i18n: 'method_prng', label: 'PRNG Stream (Random Pass)' }
+        ];
+
+        methods.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.val;
+            opt.setAttribute('data-i18n', m.i18n);
+            opt.innerText = window.translate(m.i18n, m.label);
+            select.appendChild(opt);
+        });
+
+        // Add ATA Secure Erase dynamically if all selected are SATA/HDD
+        const allSelectedAreSata = selectedDrives.length > 0 && selectedDrives.every(path => {
+            const disk = availableDisksData.find(d => d.path === path);
+            if (!disk) return false;
+            const tran = (disk.tran || '').toLowerCase();
+            const name = (disk.name || '').toLowerCase();
+            return tran === 'sata' || name.startsWith('sd');
+        });
+
+        if (allSelectedAreSata) {
             const optAtaSec = document.createElement('option');
             optAtaSec.value = 'ata-secure';
             optAtaSec.setAttribute('data-i18n', 'method_ata_secure');
@@ -108,14 +159,12 @@ function updateWipeMethodsSelect() {
             select.appendChild(optAtaSec);
             select.appendChild(optAtaEnh);
         }
-    } else {
-        if (hasAtaSecure) {
-            if (select.value === 'ata-secure' || select.value === 'ata-enhanced') {
-                select.value = 'dodshort';
-                select.dispatchEvent(new Event('change'));
-            }
-            select.querySelector('option[value="ata-secure"]')?.remove();
-            select.querySelector('option[value="ata-enhanced"]')?.remove();
+
+        const allowedVals = methods.map(m => m.val).concat(allSelectedAreSata ? ['ata-secure', 'ata-enhanced'] : []);
+        if (allowedVals.includes(prevVal)) {
+            select.value = prevVal;
+        } else {
+            select.value = 'dodshort';
         }
     }
 }
@@ -131,19 +180,31 @@ function updateShreddingUI() {
         return;
     }
 
+    const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
+    let filteredDisks = diskData.disks.filter(d => !(protectRoot && d.is_root));
+
+    // If active tab is NVMe secure erase, filter to only show NVMe drives
+    if (activeShredTab === 'nvme') {
+        filteredDisks = filteredDisks.filter(d => {
+            const tran = (d.tran || '').toLowerCase();
+            const name = (d.name || '').toLowerCase();
+            return tran === 'nvme' || name.includes('nvme');
+        });
+    }
+
     const wipingJobs = statusData.wiping || [];
-    availableDisksData = diskData.disks;
+    availableDisksData = filteredDisks;
 
     // Check if selected value matches any removed NVMe items after state mutation
-    updateWipeMethodsSelect();
+    updateShredConfigUI();
 
-    const currentStateHash = diskData.disks.map(d => {
+    const currentStateHash = filteredDisks.map(d => {
         const isWiping = wipingJobs.some(job => job.drive === d.name);
         return `${d.path}:${isWiping}`;
     }).join('|');
 
     if (currentStateHash !== previousDiskStateHash) {
-        rebuildUI(diskData.disks, wipingJobs);
+        rebuildUI(filteredDisks, wipingJobs);
         previousDiskStateHash = currentStateHash;
     } else {
         updateLiveLogs(wipingJobs);
@@ -180,7 +241,7 @@ function rebuildUI(disks, wipingJobs) {
         const serial = disk.serial ? disk.serial.trim() : 'N/A';
         const driveName = disk.name; 
         
-        const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+        const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
         
         const card = document.createElement('div');
@@ -248,7 +309,7 @@ function rebuildUI(disks, wipingJobs) {
                     selectedDrives = selectedDrives.filter(p => p !== disk.path);
                     card.classList.remove('selected');
                 }
-                updateWipeMethodsSelect();
+                updateShredConfigUI();
             });
 
             availContainer.appendChild(card);
@@ -259,6 +320,7 @@ function rebuildUI(disks, wipingJobs) {
     activeSection.style.display = activeCount > 0 ? 'block' : 'none';
     if (availableCount === 0) availContainer.innerHTML = `<p style="color: var(--text-muted);">${window.translate('no_avail_drives', 'No available drives to wipe.')}</p>`;
     window.applyLocalization();
+    if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
 
 window.stopWipeJob = async function(containerName) {
@@ -307,7 +369,7 @@ function showConfirmationModal() {
         const rawModel = disk.model ? disk.model.trim() : 'Unknown';
         const normalizedId = (rawVendor + rawModel).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-        const imageUrl = `/api/images/drives/${normalizedId}.jpg`;
+        const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="70" height="50" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="12" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
         
         let extraInputs = "";

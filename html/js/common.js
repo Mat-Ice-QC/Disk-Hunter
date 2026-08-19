@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             initGlobalTooltips();
             initGlobalConfirm();
+            initLayoutToggle();
             
             const langSelect = document.getElementById('lang-select');
             if (langSelect) {
@@ -135,8 +136,11 @@ function setActiveSidebarLink() {
         'smart_history.html': 'nav-smart-history',
         'network-share.html': 'nav-network-share',
         'partition.html': 'nav-partition',
+        'partition_history.html': 'nav-partition-history',
         'speedtest.html': 'nav-speedtest',
+        'speedtest_history.html': 'nav-speedtest-history',
         'iso.html': 'nav-iso',
+        'iso_history.html': 'nav-iso-history',
         'data-management.html': 'nav-data-management',
         'settings.html': 'nav-settings'
     };
@@ -148,10 +152,24 @@ function setActiveSidebarLink() {
         activeLink.classList.add('active');
         // If it's a submenu item, also activate its parent
         if (activeLink.classList.contains('submenu-item')) {
-            const parentId = pageIdMap['shredding.html']; // Assuming shredding is the parent
-            const parentLink = document.getElementById(parentId);
-            if (parentLink) {
-                parentLink.classList.add('active');
+            let parentId = null;
+            if (currentPage === 'history.html') {
+                parentId = 'nav-shredding';
+            } else if (currentPage === 'smart_history.html') {
+                parentId = 'nav-smart-history'; // wait, parent of smart_history is smartctl
+                parentId = 'nav-smartctl';
+            } else if (currentPage === 'partition_history.html') {
+                parentId = 'nav-partition';
+            } else if (currentPage === 'speedtest_history.html') {
+                parentId = 'nav-speedtest';
+            } else if (currentPage === 'iso_history.html') {
+                parentId = 'nav-iso';
+            }
+            if (parentId) {
+                const parentLink = document.getElementById(parentId);
+                if (parentLink) {
+                    parentLink.classList.add('active');
+                }
             }
         }
     }
@@ -511,30 +529,98 @@ class DiskService {
 
 class SpeedtestService {
     async start(drives, testType, size, timezone) {
-        const res = await fetch('/api/speedtest/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                drives: drives, 
-                test_type: testType, 
-                size: size,
-                timezone: timezone
-            })
-        });
-        if (!res.ok) throw new Error('Failed to start speedtest');
-        return await res.json();
+        const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+        const debugConsole = document.getElementById('debug-console');
+        const debugOutput = document.getElementById('debug-output');
+        if (isDebug && debugConsole && debugOutput) {
+            debugConsole.style.display = 'block';
+            debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Initiate clicked. Sending request...<br>`;
+        }
+
+        const payload = { 
+            drives: drives, 
+            test_type: testType, 
+            size: size,
+            timezone: timezone
+        };
+        if (isDebug && debugOutput) {
+            debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
+        }
+
+        try {
+            const res = await fetch('/api/speedtest/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+
+            if (isDebug && debugOutput && result.debug) {
+                debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
+            }
+
+            if (!res.ok) {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message || 'Failed to start speedtest'}<br>`;
+                throw new Error('Failed to start speedtest');
+            }
+
+            if (result.status !== 'success') {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message}<br>`;
+            } else {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
+            }
+
+            return result;
+        } catch (err) {
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${err.message || err}<br>`;
+            throw err;
+        }
     }
 }
 
 class PartitionService {
     async action(drive, actionName, params) {
-        const res = await fetch('/api/partitions/action', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ drive: drive, action: actionName, params: params })
-        });
-        if (!res.ok) throw new Error('Failed to execute partition action');
-        return await res.json();
+        const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+        const debugConsole = document.getElementById('debug-console');
+        const debugOutput = document.getElementById('debug-output');
+        if (isDebug && debugConsole && debugOutput) {
+            debugConsole.style.display = 'block';
+            debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Partition action clicked: ${actionName}. Sending request...<br>`;
+        }
+
+        const payload = { drive: drive, action: actionName, params: params };
+        if (isDebug && debugOutput) {
+            debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
+        }
+
+        try {
+            const res = await fetch('/api/partitions/action', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+
+            if (isDebug && debugOutput && result.debug) {
+                debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
+            }
+
+            if (!res.ok) {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message || 'Failed to execute partition action'}<br>`;
+                throw new Error('Failed to execute partition action');
+            }
+
+            if (result.status !== 'success') {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message}<br>`;
+            } else {
+                if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
+            }
+
+            return result;
+        } catch (err) {
+            if (isDebug && debugOutput) debugOutput.innerHTML += `<span style="color: red;">[Critical Error]</span> ${err.message || err}<br>`;
+            throw err;
+        }
     }
 }
 
@@ -625,4 +711,46 @@ window.translate = function(key, defaultVal) {
         return window.localesData[window.currentLanguage][key];
     }
     return defaultVal;
+};
+
+function initLayoutToggle() {
+    const btn = document.getElementById('btn-layout-toggle');
+    if (!btn) return;
+
+    window.applyGlobalLayout();
+
+    btn.addEventListener('click', () => {
+        const isIndex = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
+        const defaultLayout = isIndex ? 'squares' : 'list';
+        let currentLayout = localStorage.getItem('drive_view_layout') || defaultLayout;
+        const nextLayout = currentLayout === 'list' ? 'squares' : 'list';
+        localStorage.setItem('drive_view_layout', nextLayout);
+        window.applyGlobalLayout();
+        document.dispatchEvent(new CustomEvent('dh-layout-changed', { detail: nextLayout }));
+    });
+}
+
+window.applyGlobalLayout = function() {
+    const isIndex = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
+    const defaultLayout = isIndex ? 'squares' : 'list';
+    let layout = localStorage.getItem('drive_view_layout') || defaultLayout;
+    
+    const toggleText = document.getElementById('layout-toggle-text');
+    if (toggleText) {
+        toggleText.innerText = layout === 'list' ? 'Squares' : 'List';
+    }
+
+    const selectors = ['#disk-list-container', '#shred-list-container', '#drive-list-container', '#drive-selector'];
+    selectors.forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) {
+            if (layout === 'list') {
+                el.classList.remove('squares-view');
+                el.classList.add('list-view');
+            } else {
+                el.classList.remove('list-view');
+                el.classList.add('squares-view');
+            }
+        }
+    });
 };

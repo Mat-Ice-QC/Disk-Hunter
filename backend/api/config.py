@@ -6,6 +6,7 @@ REPORTS_DIR = f"{DATA_DIR}/reports"
 HISTORY_FILE = f"{DATA_DIR}/wipe_history.json"
 SMARTCTL_HISTORY_FILE = f"{DATA_DIR}/smartctl_history.json"
 SPEEDTEST_HISTORY_FILE = f"{DATA_DIR}/speedtest_history.json"
+PARTITION_HISTORY_FILE = f"{DATA_DIR}/partition_history.json"
 IMAGES_DIR = f"{DATA_DIR}/images"
 DRIVES_DIR = f"{IMAGES_DIR}/drives"
 LOGO_PATH = f"{IMAGES_DIR}/logo.png"
@@ -23,4 +24,7 @@ def setup_directories():
             f.write("[]")
     if not os.path.exists(SPEEDTEST_HISTORY_FILE):
         with open(SPEEDTEST_HISTORY_FILE, "w") as f:
+            f.write("[]")
+    if not os.path.exists(PARTITION_HISTORY_FILE):
+        with open(PARTITION_HISTORY_FILE, "w") as f:
             f.write("[]")

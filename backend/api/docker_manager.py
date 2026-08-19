@@ -45,9 +45,12 @@ async def wait_for_container(container_name: str) -> str:
     stdout, _ = await proc.communicate()
     return stdout.decode().strip()
 
-def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None) -> bool:
-    """Runs a docker container and returns True if successful."""
-    subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
+def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None, debug_list: list = None) -> bool:
+    """Runs a docker container and returns True if successful. Optional debug_list collects docker commands and outputs."""
+    rm_cmd = ["docker", "rm", "-f", name]
+    if debug_list is not None:
+        debug_list.append(f"Cleanup command: {' '.join(rm_cmd)}")
+    subprocess.run(rm_cmd, capture_output=True, check=False)
     
     cmd = ["docker", "run"]
     if detach:
@@ -71,5 +74,16 @@ def run_container(name: str, image: str, args: list[str], privileged: bool = Fal
     cmd.append(image)
     cmd.extend(args)
     
+    if debug_list is not None:
+        debug_list.append(f"Run command: {' '.join(cmd)}")
+        
     res = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if debug_list is not None:
+        debug_list.append(f"Command exit code: {res.returncode}")
+        if res.stdout.strip():
+            debug_list.append(f"Command stdout: {res.stdout.strip()}")
+        if res.stderr.strip():
+            debug_list.append(f"Command stderr: {res.stderr.strip()}")
+            
     return res.returncode == 0

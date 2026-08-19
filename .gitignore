@@ -4,6 +4,11 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
+# Environment variables
+.env
+
+# AI agent instructions
+AI/
 
 # Runtime / persistent data
 data/

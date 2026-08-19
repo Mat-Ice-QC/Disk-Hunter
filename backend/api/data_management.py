@@ -8,8 +8,11 @@ router = APIRouter()
 
 def get_safe_path(base_dir: str, requested_path: str) -> str:
     # Ensure the requested path stays within the base_dir to prevent directory traversal
-    safe_path = os.path.abspath(os.path.join(base_dir, requested_path))
-    if not safe_path.startswith(os.path.abspath(base_dir)):
+    base_abs = os.path.abspath(base_dir)
+    if not base_abs.endswith(os.sep):
+        base_abs += os.sep
+    safe_path = os.path.abspath(os.path.join(base_abs, requested_path))
+    if not safe_path.startswith(base_abs):
         raise HTTPException(status_code=403, detail="Access denied")
     return safe_path
 

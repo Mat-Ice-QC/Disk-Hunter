@@ -22,7 +22,7 @@
                     <p>Select drives, choose a test type, and execute.</p>
                     
                     <div class="config-box">
-                        <label class="shred-label">Test Type</label>
+                        <label class="shred-label"><span>Test Type</span><span class="help-indicator" data-tooltip="<strong>S.M.A.R.T. Self-Test</strong><br>Select either a short self-test (approx. 2 mins) or an extended long self-test to perform a full read scan.">?</span></label>
                         <select id="test-type" class="shred-select">
                             <option value="short" selected>Short Test</option>
                             <option value="long">Extended Test</option>
@@ -42,6 +42,11 @@
                     <h3>Available Drives</h3>
                     <div id="drive-list-container" class="drive-list-grid mt-15">
                         <p>Scanning hardware...</p>
+                    </div>
+
+                    <div id="debug-console" style="margin-top: 30px;">
+                        <div class="debug-header">API DEBUG TERMINAL</div>
+                        <div id="debug-output">Awaiting execution...</div>
                     </div>
                 </div>
             </div>

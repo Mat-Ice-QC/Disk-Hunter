@@ -118,7 +118,20 @@ async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, ser
 
 @router.post("/api/shred")
 def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_request: Request):
+    """Starts the shredding/wiping process on selected devices.
+    
+    Args:
+        request (ShredRequest): The data destruction configuration and target devices.
+        background_tasks (BackgroundTasks): FastAPI background task manager to run container monitors.
+        http_request (Request): The incoming HTTP request.
+        
+    Returns:
+        dict: A status dictionary containing success/error state and debug logs.
+    """
+    debug_logs = []
     try:
+        ip = http_request.client.host if http_request.client else "Unknown"
+        debug_logs.append(f"Received ShredRequest payload from {ip}: {request.dict()}")
         spawned_containers = []
         start_time = get_local_time(request.timezone)
 
@@ -126,27 +139,41 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
         for drive_obj in request.drives:
             drive = drive_obj.path
             drive_name = drive.split('/')[-1]
+            debug_logs.append(f"Configuring wipe for drive: {drive}")
             
             serial = "UNKNOWN"
             try:
                 s_cmd = ["lsblk", "-n", "-o", "SERIAL", drive]
+                debug_logs.append(f"Running command: {' '.join(s_cmd)}")
                 s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                if s_res.stdout.strip():
+                if s_res.returncode == 0 and s_res.stdout.strip():
                     serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', s_res.stdout.strip())
-            except Exception:
-                pass
+                    debug_logs.append(f"Found serial for {drive}: {serial}")
+                else:
+                    debug_logs.append(f"lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
+            except Exception as e:
+                debug_logs.append(f"Exception running lsblk command for {drive}: {str(e)}")
             
             container_name = f"disk_hunter_wipe_{drive_name}--{serial}"
             
+            devices = [f"{drive}:{drive}"]
             if request.method in ["nvme-user", "nvme-crypto"]:
                 image = "disk-hunter-nvme"
                 ses_val = "1" if request.method == "nvme-user" else "2"
                 args = ["format", drive, f"--ses={ses_val}", "--force"]
+                # Extract nvme controller (e.g. /dev/nvme0 from /dev/nvme0n1)
+                nvme_match = re.match(r"^(/dev/nvme\d+)", drive)
+                if nvme_match:
+                    controller_path = nvme_match.group(1)
+                    if os.path.exists(controller_path):
+                        devices.append(f"{controller_path}:{controller_path}")
             elif request.method in ["ata-secure", "ata-enhanced"]:
                 try:
+                    debug_logs.append(f"Cycling SATA link power for drive: {drive_name}")
                     cycle_sata_link_power(drive_name)
+                    debug_logs.append(f"SATA link power cycle completed for: {drive_name}")
                 except Exception as e:
-                    print(f"Failed to cycle SATA link power for {drive_name}: {e}")
+                    debug_logs.append(f"Failed to cycle SATA link power for {drive_name}: {e}")
                 image = "disk-hunter-hdparm"
                 args = [drive, "enhanced" if request.method == "ata-enhanced" else "secure"]
             else:
@@ -158,13 +185,15 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 image=image,
                 args=args,
                 privileged=True,
-                devices=[f"{drive}:{drive}"],
+                devices=devices,
                 tty=True,
-                env={"TERM": "xterm"}
+                env={"TERM": "xterm"},
+                debug_list=debug_logs
             )
             
             if not success:
-                return {"status": "error", "message": f"Docker Error starting container."}
+                debug_logs.append(f"Failed to start container {container_name}")
+                return {"status": "error", "message": f"Docker Error starting container.", "debug": debug_logs}
             
             append_history({
                 "timestamp": start_time,
@@ -179,16 +208,21 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
             background_tasks.add_task(
                 monitor_wipe_job, 
                 container_name, drive, drive_name, serial, request, start_time, 
-                drive_obj.server_name, drive_obj.inventory_id, drive_obj.datacenter 
+                drive_obj.server_name, drive_obj.inventory_id, drive_obj.datacenter,
+                ip
             )
             spawned_containers.append(container_name)
 
-        return {"status": "success", "message": f"Started wipe containers."}
+        return {"status": "success", "message": f"Started wipe containers.", "debug": debug_logs}
     except Exception as e:
-        return {"status": "error", "message": f"System error: {str(e)}"}
+        debug_logs.append(f"Exception raised in start_shred endpoint: {str(e)}")
+        return {"status": "error", "message": f"System error: {str(e)}", "debug": debug_logs}
 
 @router.get("/api/shredding/logs/{container_name}")
 def get_shredding_logs(container_name: str):
+    if not re.match(r"^disk_hunter_wipe_[a-zA-Z0-9_.-]+$", container_name):
+        return {"status": "error", "message": "Invalid container name format."}
+
     try:
         log_dir = "/app/data/shredding/logs/container_logs"
         log_file_path = os.path.join(log_dir, f"{container_name}.log")
