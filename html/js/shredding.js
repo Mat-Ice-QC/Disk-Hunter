@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const debugConsole = document.getElementById('debug-console');
     if (debugConsole) {
         if (isDebug) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             const debugOutput = document.getElementById('debug-output');
             if (debugOutput) {
                 debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
@@ -427,7 +427,7 @@ async function executeWipe() {
     const debugOutput = document.getElementById('debug-output');
     
     if (isDebug) {
-        debugConsole.style.display = 'block';
+        debugConsole.style.display = 'flex';
         debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Initiate clicked. Sending request...<br>`;
     }
     

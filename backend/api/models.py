@@ -31,6 +31,11 @@ class PartitionActionRequest(BaseModel):
     action: str
     params: list[str] = []
 
+class BatchPartitionRequest(BaseModel):
+    drives: list[str]
+    action: str
+    params: list[str] = []
+
 class SpeedtestRequest(BaseModel):
     drives: list[str]
     test_type: str = "read"

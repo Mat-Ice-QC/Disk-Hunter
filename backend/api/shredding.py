@@ -9,7 +9,7 @@ from .docker_manager import get_running_containers, get_container_logs, stop_and
 
 from .models import ShredRequest, StopRequest
 from .history import append_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 from .config import REPORTS_DIR
 from .pdf_generator import generate_erasure_certificate
 
@@ -130,7 +130,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
     """
     debug_logs = []
     try:
-        ip = http_request.client.host if http_request.client else "Unknown"
+        ip = get_client_ip(http_request)
         debug_logs.append(f"Received ShredRequest payload from {ip}: {request.dict()}")
         spawned_containers = []
         start_time = get_local_time(request.timezone)

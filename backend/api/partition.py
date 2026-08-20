@@ -2,9 +2,9 @@ import subprocess
 import logging
 import re
 from fastapi import APIRouter, Request
-from .models import PartitionActionRequest
+from .models import PartitionActionRequest, BatchPartitionRequest
 from .history import append_partition_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 
 router = APIRouter()
 
@@ -98,7 +98,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
         dict: A status dictionary containing success/error state and debug logs.
     """
     debug_logs = []
-    ip = http_request.client.host if http_request.client else "Unknown"
+    ip = get_client_ip(http_request)
     start_time = get_local_time()
 
     if not re.match(r"^/dev/[a-zA-Z0-9_-]+$", req.drive):
@@ -225,3 +225,60 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
             "status": "error"
         })
         return {"status": "error", "message": str(e), "debug": debug_logs}
+
+
+@router.post("/api/partitions/batch")
+def partition_batch(req: BatchPartitionRequest, http_request: Request):
+    """Executes a partition action (e.g. mklabel) on multiple drives sequentially.
+
+    Returns per-drive results so the frontend can show progress.
+    """
+    ip = get_client_ip(http_request)
+    start_time = get_local_time()
+
+    valid_drives = [d for d in req.drives if re.match(r"^/dev/[a-zA-Z0-9_-]+$", d)]
+    if not valid_drives:
+        return {"status": "error", "message": "No valid device paths provided."}
+
+    results = []
+    for drive in valid_drives:
+        drive_debug = []
+        drive_start = get_local_time()
+        try:
+            res = run_parted(drive, [req.action] + req.params, debug_list=drive_debug)
+            ok = res.returncode == 0
+            msg = res.stderr.strip() or res.stdout.strip() if not ok else "OK"
+            if not ok:
+                msg = msg or "Unknown error"
+
+            append_partition_history({
+                "timestamp": drive_start,
+                "event": f"Batch {req.action} {'completed' if ok else 'failed'} on {drive}",
+                "drive": drive,
+                "action": req.action,
+                "params": req.params,
+                "username": ip,
+                "status": "success" if ok else "error"
+            })
+            results.append({"drive": drive, "status": "success" if ok else "error", "message": msg, "debug": drive_debug})
+        except Exception as e:
+            append_partition_history({
+                "timestamp": drive_start,
+                "event": f"Batch {req.action} crashed on {drive}",
+                "drive": drive,
+                "action": req.action,
+                "params": req.params,
+                "username": ip,
+                "status": "error"
+            })
+            results.append({"drive": drive, "status": "error", "message": str(e), "debug": drive_debug})
+
+    succeeded = sum(1 for r in results if r["status"] == "success")
+    failed = len(results) - succeeded
+    return {
+        "status": "success" if failed == 0 else ("partial" if succeeded > 0 else "error"),
+        "total": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results
+    }

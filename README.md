@@ -133,15 +133,49 @@ docker compose up -d --build --force-recreate
 
 ---
 
+## Air-Gapped Kiosk Mode (optional)
+
+For deployments on a bare, air-gapped Linux host with no desktop environment,
+an optional **Firefox kiosk** container can launch a self-contained X server on
+the host's **tty2** and open Firefox ESR in fullscreen kiosk mode directly at
+the Disk-Hunter UI. The operator switches to tty2 (`Ctrl+Alt+F2`, or the
+container runs `chvt 2` automatically) and drives the dashboard with the
+machine's physical keyboard and mouse.
+
+The kiosk is gated behind a compose profile so it never starts on a normal
+`docker compose up`:
+
+```bash
+docker compose --profile kiosk up -d --build
+```
+
+`KIOSK_URL` (see `.env.example`, default `http://localhost`) selects the page.
+See [`docs/firefox-kiosk.md`](../docs/firefox-kiosk.md) for architecture and
+privilege justification.
+
+---
+
 ## TODO / Future Features
 
 - **Active Directory / LDAP Integration:** Corporate user authentication and role-based access control (RBAC).
 - **Native NVMe Secure Erase Support:** Expand nvme-cli worker support to trigger hardware block formatting.
 - **Automated Report Emailing:** SMTP mailing service to dispatch PDF erasure certificates automatically.
 - **Bulk Firmware Updates:** Automate deploying vendor-specific firmware images across uniform drive batches.
-- **Disk Overview:** Fix the fetching of smartdata always being called every refresh.
+- ~~**Disk Overview:** Fix the fetching of smartdata always being called every refresh.~~ (Fixed: SMART health now broadcast via WebSocket; per-disk HTTP calls eliminated on subsequent refreshes.)
 - **Network Share / Disk Browsing:** Establish a dedicated module for network drive browsing.
 - **Drive Images Fix:** Add default images for nvme, usb, ssd, hdd, sd, etc.
-- **Security:** Conduct a comprehensive audit of the entire codebase.
 - **Pin Package Versions:** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
-- **Partition Editor UI:** Remake the partition editor UI for an improved aesthetic layout.
+- ~~**Partition Editor UI:** Remake the partition editor UI for an improved aesthetic layout.~~ (Completed: full redesign with glassmorphic styling, responsive grid, batch wipe capability, and corrected table columns.)
+
+---
+
+## Recent Changes
+
+- Added batch partition wipe feature from the UI to format multiple drives at once
+- Fixed the client IP logging so the audit logs show the real IP instead of the nginx proxy (127.0.0.1)
+- Redesigned the Partition Editor UI using a cleaner grid layout with allocation bars
+- Added a drive selection toolbar (select all/deselect/filter) globally
+- Added a floating debug console 
+- Optimized WebSocket broadcasts with disk scan caching to speed up the UI
+- Added a Firefox Kiosk mode container for air-gapped deployments
+- Fixed some layout display bugs on the disk overview

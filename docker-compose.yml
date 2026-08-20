@@ -23,14 +23,6 @@ services:
       - /run/udev:/run/udev:ro
       - /var/run/docker.sock:/var/run/docker.sock 
       - ${DATA_DIR:-./data}:/app/data
-      - ${REPORTS_DIR:-./data/reports}:/app/data/reports
-      - ${IMAGES_DIR:-./data/images}:/app/data/images
-      - ${DRIVES_DIR:-./data/images/drives}:/app/data/images/drives
-      - ${ISO_DIR:-./data/isos}:/app/data/isos
-      - ${HISTORY_FILE:-./data/wipe_history.json}:/app/data/wipe_history.json
-      - ${SMARTCTL_HISTORY_FILE:-./data/smartctl_history.json}:/app/data/smartctl_history.json
-      - ${SPEEDTEST_HISTORY_FILE:-./data/speedtest_history.json}:/app/data/speedtest_history.json
-      - ${LOGO_PATH:-./data/images/logo.png}:/app/data/images/logo.png
     network_mode: host
 
   disk-hunter-nwipe:
@@ -74,3 +66,37 @@ services:
   disk-hunter-speedtest:
     build: ./workers/speedtest-worker
     image: disk-hunter-speedtest
+
+  # Local console kiosk: runs Firefox ESR in kiosk mode on the host's tty2,
+  # pointed at the Disk-Hunter UI. Intended for air-gapped deployments where
+  # the operator drives Disk Hunter directly from the machine's physical
+  # screen/keyboard/mouse with no desktop environment installed on the host.
+  # Opt-in via compose profile so it does NOT start on a normal
+  # `docker compose up`. Enable with: docker compose --profile kiosk up -d --build
+  # KIOSK_URL (see .env.example) selects the startup page.
+  disk-hunter-firefox-kiosk:
+    build: ./workers/firefox-kiosk
+    image: disk-hunter-firefox-kiosk
+    container_name: disk_hunter_firefox_kiosk
+    restart: unless-stopped
+    env_file: .env
+    # Xorg on a bare host virtual terminal needs direct device access and the
+    # ability to switch VTs (chvt). This service is privileged by explicit user
+    # request; privilege is scoped to this kiosk container only and no existing
+    # service is altered. See docs/firefox-kiosk.md for the justification.
+    privileged: true
+    environment:
+      - KIOSK_URL=${KIOSK_URL:-http://localhost}
+    volumes:
+      - /run/udev:/run/udev:ro
+      - /sys:/sys:ro
+    devices:
+      - /dev/tty:/dev/tty
+      - /dev/tty2:/dev/tty2
+      - /dev/dri:/dev/dri
+      - /dev/fb0:/dev/fb0
+      - /dev/input:/dev/input
+      - /dev/snd:/dev/snd
+    network_mode: host
+    profiles:
+      - kiosk

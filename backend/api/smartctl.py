@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Request
 from .models import SmartRequest, StopRequest
 from .history import append_smartctl_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 
 # Create logs directory if it doesn't exist
@@ -170,7 +170,7 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
     """
     debug_logs = []
     try:
-        ip = http_request.client.host if http_request.client else "Unknown"
+        ip = get_client_ip(http_request)
         debug_logs.append(f"Received SmartRequest payload from {ip}: {request.dict()}")
         test_type = request.test_type
         start_time = get_local_time()

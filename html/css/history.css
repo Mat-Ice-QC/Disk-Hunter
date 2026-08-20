@@ -76,6 +76,6 @@
 
 .history-time { color: var(--text-muted); }
 .history-event { color: white; }
-.history-serial { color: #94a3b8; }
+.history-serial { color: var(--text-muted); }
 .history-status.success, .history-status.completed { color: var(--accent-green); font-weight: bold; }
 .history-status.failed { color: var(--accent-red); font-weight: bold; }

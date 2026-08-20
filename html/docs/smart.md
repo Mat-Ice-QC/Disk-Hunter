@@ -21,4 +21,4 @@ The sub-menu logs records of previous tests, capturing execution timestamps, dri
 :::
 
 > [!NOTE]
-> To prevent unnecessary disk activity, S.M.A.R.T attributes are cached for 30 seconds globally. Manual page refreshes will not trigger physical drive queries unless the cache window expires.
+> To prevent unnecessary disk activity, S.M.A.R.T attributes are cached for 30 seconds globally. The Disk Overview page receives SMART health status (Passed/Failing/N/A) via the WebSocket broadcast every 30 seconds, eliminating the need for per-disk HTTP requests on every refresh. Manual page refreshes will not trigger physical drive queries unless the cache window expires.

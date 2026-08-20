@@ -92,7 +92,104 @@ document.addEventListener('DOMContentLoaded', () => {
             initFooterTools();
         });
     }
+
+    // Initialize global debug console (works on every page)
+    initDebugConsole();
+
+    // Initialize selection toolbars on any page with drive-checkbox items
+    initSelectionToolbar();
 });
+
+// --- Global Debug Console ---
+function initDebugConsole() {
+    const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
+
+    // Remove any pre-existing inline debug-console so we have a single global instance
+    const existing = document.getElementById('debug-console');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'debug-console';
+    panel.className = 'debug-console-floating';
+    panel.innerHTML = `
+        <div class="debug-console-header">
+            <span class="debug-header">API DEBUG TERMINAL</span>
+            <div class="debug-console-controls">
+                <button id="debug-clear-btn" title="Clear">Clear</button>
+                <button id="debug-minimize-btn" title="Minimize">_</button>
+            </div>
+        </div>
+        <div id="debug-output" class="debug-console-body">[System] Diagnostic terminal active. Awaiting execution...</div>
+    `;
+    document.body.appendChild(panel);
+
+    const output = document.getElementById('debug-output');
+    const clearBtn = document.getElementById('debug-clear-btn');
+    const minBtn = document.getElementById('debug-minimize-btn');
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => { if (output) output.innerHTML = ''; });
+    }
+    if (minBtn) {
+        minBtn.addEventListener('click', () => {
+            panel.classList.toggle('minimized');
+            minBtn.innerText = panel.classList.contains('minimized') ? '+' : '_';
+        });
+    }
+
+    if (!isDebug) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'flex';
+
+    // Global helper that any page JS can call
+    window.debugLog = function(msg) {
+        if (!output) return;
+        const line = document.createElement('div');
+        line.innerHTML = msg;
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+    };
+
+    // Intercept all fetch calls to log API requests/responses
+    const origFetch = window.fetch;
+    window.fetch = async function(...args) {
+        const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : String(args[0]));
+        const method = (args[1] && args[1].method) || 'GET';
+        const isApi = url.includes('/api/') || url.includes('/ws');
+        if (isApi) {
+            window.debugLog(`<span style="color:#3b82f6;">[Fetch]</span> ${method} ${url}`);
+        }
+        try {
+            const res = await origFetch.apply(this, args);
+            if (isApi) {
+                window.debugLog(`<span style="color:var(--accent-green);">[Response]</span> ${url} → ${res.status} ${res.statusText}`);
+            }
+            return res;
+        } catch (err) {
+            if (isApi) {
+                window.debugLog(`<span style="color:red;">[Error]</span> ${url} → ${err.message || err}`);
+            }
+            throw err;
+        }
+    };
+
+    // Intercept WebSocket messages
+    const origWS = window.WebSocket;
+    window.WebSocket = function(...wsArgs) {
+        const ws = new origWS(...wsArgs);
+        const wsUrl = wsArgs[0];
+        window.debugLog(`<span style="color:#a855f7;">[WebSocket]</span> Connecting to ${wsUrl}`);
+        ws.addEventListener('open', () => window.debugLog(`<span style="color:var(--accent-green);">[WebSocket]</span> Connected`));
+        ws.addEventListener('close', () => window.debugLog(`<span style="color:#f59e0b;">[WebSocket]</span> Disconnected`));
+        ws.addEventListener('error', () => window.debugLog(`<span style="color:red;">[WebSocket]</span> Error`));
+        return ws;
+    };
+    window.WebSocket.prototype = origWS.prototype;
+    Object.setPrototypeOf(window.WebSocket, origWS);
+}
 
 function loadComponent(elementId, url, callback) {
     const container = document.getElementById(elementId);
@@ -189,6 +286,7 @@ function updateSystemInfoUI(data) {
 function processWebSocketData(data) {
     // Dispatch global events for other components to listen to
     if (data.disks) document.dispatchEvent(new CustomEvent('ws-disks', { detail: data.disks }));
+    if (data.smart_health) document.dispatchEvent(new CustomEvent('ws-smart_health', { detail: data.smart_health }));
     if (data.wipe_status) document.dispatchEvent(new CustomEvent('ws-wipe_status', { detail: data.wipe_status }));
     if (data.speedtest_status) document.dispatchEvent(new CustomEvent('ws-speedtest_status', { detail: data.speedtest_status }));
     if (data.smart_status) document.dispatchEvent(new CustomEvent('ws-smart_status', { detail: data.smart_status }));
@@ -533,7 +631,7 @@ class SpeedtestService {
         const debugConsole = document.getElementById('debug-console');
         const debugOutput = document.getElementById('debug-output');
         if (isDebug && debugConsole && debugOutput) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Initiate clicked. Sending request...<br>`;
         }
 
@@ -584,7 +682,7 @@ class PartitionService {
         const debugConsole = document.getElementById('debug-console');
         const debugOutput = document.getElementById('debug-output');
         if (isDebug && debugConsole && debugOutput) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Partition action clicked: ${actionName}. Sending request...<br>`;
         }
 
@@ -717,6 +815,13 @@ function initLayoutToggle() {
     const btn = document.getElementById('btn-layout-toggle');
     if (!btn) return;
 
+    const selectors = ['#disk-list-container', '#shred-list-container', '#drive-list-container', '#drive-selector'];
+    const hasDriveList = selectors.some(sel => document.querySelector(sel));
+    if (!hasDriveList) {
+        btn.style.display = 'none';
+        return;
+    }
+
     window.applyGlobalLayout();
 
     btn.addEventListener('click', () => {
@@ -754,3 +859,89 @@ window.applyGlobalLayout = function() {
         }
     });
 };
+
+// --- Global Selection Toolbar (Select All / Deselect All / Filter) ---
+// Auto-injects a toolbar above any container that has .drive-checkbox items.
+// Works on shredding, smartctl, and speedtest pages without per-page changes.
+function initSelectionToolbar() {
+    const containerIds = ['shred-list-container', 'drive-list-container', 'drive-selector'];
+    containerIds.forEach(id => {
+        const container = document.getElementById(id);
+        if (!container) return;
+
+        // Insert toolbar before the container
+        const toolbar = document.createElement('div');
+        toolbar.className = 'selection-toolbar';
+        toolbar.id = `toolbar-${id}`;
+        toolbar.innerHTML = `
+            <button class="sel-btn sel-all" data-target="${id}">Select All</button>
+            <button class="sel-btn sel-none" data-target="${id}">Deselect All</button>
+            <div class="sel-filter-wrapper">
+                <input type="text" class="sel-filter" data-target="${id}" placeholder="Filter by model/serial/path (e.g. 860)..." />
+            </div>
+            <span class="sel-count" id="count-${id}">0 selected</span>
+        `;
+
+        container.parentNode.insertBefore(toolbar, container);
+
+        // Select All: check all non-disabled, non-filtered checkboxes
+        toolbar.querySelector('.sel-all').addEventListener('click', () => {
+            const cards = container.querySelectorAll('.drive-card');
+            cards.forEach(card => {
+                if (card.dataset.filteredOut === 'true') return;
+                const cb = card.querySelector('.drive-checkbox');
+                if (cb && !cb.disabled && !cb.checked) {
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+            updateSelectionCount(id);
+        });
+
+        // Deselect All: uncheck all checkboxes
+        toolbar.querySelector('.sel-none').addEventListener('click', () => {
+            const cards = container.querySelectorAll('.drive-card');
+            cards.forEach(card => {
+                const cb = card.querySelector('.drive-checkbox');
+                if (cb && cb.checked) {
+                    cb.checked = false;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+            updateSelectionCount(id);
+        });
+
+        // Filter: hide/show cards based on text match
+        const filterInput = toolbar.querySelector('.sel-filter');
+        filterInput.addEventListener('input', () => {
+            const query = filterInput.value.trim().toLowerCase();
+            const cards = container.querySelectorAll('.drive-card');
+            cards.forEach(card => {
+                const text = (card.innerText || '').toLowerCase();
+                if (query === '' || text.includes(query)) {
+                    card.style.display = '';
+                    card.dataset.filteredOut = 'false';
+                } else {
+                    card.style.display = 'none';
+                    card.dataset.filteredOut = 'true';
+                }
+            });
+        });
+    });
+
+    // Update counts periodically (catches programmatic selection changes)
+    document.addEventListener('change', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('drive-checkbox')) {
+            const container = e.target.closest('.drive-list-grid');
+            if (container) updateSelectionCount(container.id);
+        }
+    });
+}
+
+function updateSelectionCount(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const checked = container.querySelectorAll('.drive-checkbox:checked');
+    const countEl = document.getElementById(`count-${containerId}`);
+    if (countEl) countEl.innerText = `${checked.length} selected`;
+}

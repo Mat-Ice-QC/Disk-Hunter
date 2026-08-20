@@ -1,7 +1,8 @@
 import socket
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 
@@ -24,13 +25,19 @@ def get_temp():
 
 def get_local_time(tz_string="UTC"):
     try:
-        # Attempts to format the time using the requested timezone
         return datetime.now(ZoneInfo(tz_string)).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
-        # Fallback to UTC if the string is invalid
         return datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
 
-import os
+
+def get_client_ip(http_request):
+    """Extract the real client IP from a request, respecting X-Real-IP / X-Forwarded-For headers set by nginx."""
+    forwarded = http_request.headers.get("X-Real-IP") or http_request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if http_request.client:
+        return http_request.client.host
+    return "Unknown"
 
 @router.get("/api/system-info")
 def system_info():

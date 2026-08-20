@@ -8,7 +8,7 @@ import re
 from typing import List, Dict
 from .config import ISO_DIR
 from .history import append_iso_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 
 router = APIRouter(prefix="/api/iso", tags=["iso"])
 
@@ -77,7 +77,7 @@ def start_download(req: DownloadRequest, background_tasks: BackgroundTasks, http
     debug_logs = []
     task_id = str(uuid.uuid4())
     safe_filename = os.path.basename(req.filename)
-    ip = http_request.client.host if http_request.client else "Unknown"
+    ip = get_client_ip(http_request)
     debug_logs.append(f"Received DownloadRequest payload from {ip}: url={req.url}, filename={safe_filename}")
 
     if not safe_filename or safe_filename in [".", ".."]:
@@ -189,7 +189,7 @@ def start_write(req: WriteRequest, background_tasks: BackgroundTasks, http_reque
         dict: A status dictionary containing the task ID and debug logs.
     """
     debug_logs = []
-    ip = http_request.client.host if http_request.client else "Unknown"
+    ip = get_client_ip(http_request)
     task_id = str(uuid.uuid4())
     safe_filename = os.path.basename(req.filename)
     filepath = os.path.join(ISO_DIR, safe_filename)

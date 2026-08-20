@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const debugConsole = document.getElementById('debug-console');
     if (debugConsole) {
         if (isDebug) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             const debugOutput = document.getElementById('debug-output');
             if (debugOutput) {
                 debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
@@ -35,16 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchDrives() {
     try {
         const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
-        const res = await fetch(`/api/disks?exclude_root=${protectRoot}`);
-        const data = await res.json();
+        // Use DiskService cache (10s TTL) to avoid redundant lsblk calls;
+        // filter root client-side when protectRoot is active.
+        const data = await window.diskService.getDisks(true);
         const selector = document.getElementById('drive-selector');
 
         if (data.status === 'success' && data.disks.length > 0) {
             selector.innerHTML = '';
             const filteredDisks = data.disks.filter(disk => !(protectRoot && disk.is_root));
             filteredDisks.forEach(disk => {
-                const li = document.createElement('div');
-                li.className = 'drive-card';
+                const card = document.createElement('div');
+                card.className = 'drive-card';
 
                 const rawVendor = disk.vendor ? disk.vendor.trim() + ' ' : '';
                 const rawModel = disk.model ? disk.model.trim() : 'Unknown';
@@ -54,54 +55,44 @@ async function fetchDrives() {
                 const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
                 const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22 style=%22background-color:%231e293b; border-radius: 4px;%22%3E%3Ctext fill=%22%2394a3b8%22 x=%2250%25%22 y=%2250%25%22 font-family=%22sans-serif%22 font-weight=%22bold%22 font-size=%2230%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
-                let partitionsHtml = '';
                 let totalDiskSize = disk.size || 1;
                 let usedSize = 0;
                 if (disk.children && disk.children.length > 0) {
-                    disk.children.forEach(child => {
-                        usedSize += (child.size || 0);
-                    });
+                    disk.children.forEach(child => { usedSize += (child.size || 0); });
                 }
+                let usedPct = Math.min((usedSize / totalDiskSize) * 100, 100);
 
-                let usedPct = (usedSize / totalDiskSize) * 100;
-                if (usedPct > 100) usedPct = 100;
-                let freeSize = totalDiskSize - usedSize;
-                if (freeSize < 0) freeSize = 0;
-
-                partitionsHtml = `
-                    <div style="margin-top: 8px; width: 100%;">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
-                            <span>Allocated</span>
-                            <span>${formatBytes(usedSize)} / ${formatBytes(totalDiskSize)}</span>
+                card.innerHTML = `
+                    <input type="checkbox" class="drive-checkbox" data-drive="${disk.path}" onclick="event.stopPropagation()" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;">
+                    <img class="drive-card-img" src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                    <div class="drive-card-body">
+                        <div class="drive-card-title">${fullName || disk.name}</div>
+                        <div class="drive-card-meta">
+                            <span><strong>Path:</strong>${disk.path}</span>
+                            <span><strong>Size:</strong>${formatBytes(disk.size)}</span>
+                            <span><strong>Table:</strong>${disk.pttype ? disk.pttype.toUpperCase() : 'Unknown'}</span>
                         </div>
-                        <div style="width: 100%; height: 8px; background-color: var(--bg-darker, #0f172a); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color, #334155);" title="Allocated: ${formatBytes(usedSize)} | Unallocated: ${formatBytes(freeSize)}">
-                            <div style="width: ${usedPct}%; height: 100%; background-color: var(--primary, #3b82f6);"></div>
+                        <div class="drive-card-bar">
+                            <div class="drive-card-bar-label">
+                                <span>Allocated</span>
+                                <span>${formatBytes(usedSize)} / ${formatBytes(totalDiskSize)}</span>
+                            </div>
+                            <div class="drive-card-bar-track">
+                                <div class="drive-card-bar-fill" style="width:${usedPct}%"></div>
+                            </div>
                         </div>
                     </div>
                 `;
-
-                li.innerHTML = `
-                    <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" style="width: 80px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color, #334155);">
-                    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
-                        <div style="font-weight: bold; font-size: 16px; color: var(--text-main);">${fullName || disk.name}</div>
-                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 10px;">
-                            <span><strong style="color: var(--primary);">Path:</strong> ${disk.path}</span>
-                            <span><strong style="color: var(--primary);">Size:</strong> ${formatBytes(disk.size)}</span>
-                            <span><strong style="color: var(--primary);">Table:</strong> ${disk.pttype ? disk.pttype.toUpperCase() : 'Unknown'}</span>
-                        </div>
-                        ${partitionsHtml}
-                    </div>
-                `;
-                li.onclick = () => selectDrive(disk.path, li);
-                selector.appendChild(li);
+                card.onclick = () => selectDrive(disk.path, card);
+                selector.appendChild(card);
             });
         } else {
-            selector.innerHTML = '<li>No drives found.</li>';
+            selector.innerHTML = '<p class="empty-state">No drives found.</p>';
         }
         if (window.applyGlobalLayout) window.applyGlobalLayout();
     } catch (e) {
         console.error(e);
-        document.getElementById('drive-selector').innerHTML = '<li style="color: red;">Error fetching drives</li>';
+        document.getElementById('drive-selector').innerHTML = '<p class="empty-state" style="color:red;">Error fetching drives</p>';
     }
 }
 
@@ -125,6 +116,15 @@ function selectDrive(path, cardElement) {
 function closeModal() {
     document.getElementById('partition-modal').classList.remove('active');
     currentDrive = null;
+}
+
+function selectPartitionBlock(num) {
+    document.querySelectorAll('.partition-block').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.partition-table tbody tr').forEach(r => r.classList.remove('selected'));
+    const block = document.querySelector(`.partition-block[data-num="${num}"]`);
+    if (block) block.classList.add('selected');
+    const row = document.querySelector(`.partition-table tbody tr[data-num="${num}"]`);
+    if (row) row.classList.add('selected');
 }
 
 function formatBytes(bytes) {
@@ -156,10 +156,10 @@ async function loadPartitions() {
 
         if (data.status === 'success') {
             infoDiv.innerHTML = `
-                <div><strong>Model:</strong> ${data.disk.model}</div>
-                <div><strong>Size:</strong> ${formatBytes(parseInt(data.disk.size.replace(/[^0-9]/g, '')))}</div>
-                <div><strong>Table:</strong> ${data.disk.label || 'Unknown'}</div>
-                <div><strong>Sector Size:</strong> ${data.disk.logical_sector}/${data.disk.physical_sector}</div>
+                <div class="info-tile"><strong>Model</strong><span>${data.disk.model}</span></div>
+                <div class="info-tile"><strong>Size</strong><span>${formatBytes(parseInt(data.disk.size.replace(/[^0-9]/g, '')))}</span></div>
+                <div class="info-tile"><strong>Table</strong><span>${(data.disk.label || 'unknown').toUpperCase()}</span></div>
+                <div class="info-tile"><strong>Sector</strong><span>${data.disk.logical_sector}/${data.disk.physical_sector}</span></div>
             `;
 
             const diskSizeStr = data.disk.size.replace(/[^0-9]/g, '');
@@ -213,6 +213,7 @@ async function loadPartitions() {
                     const pct = (sizeBytes / totalDiskSize) * 100;
                     const block = document.createElement('div');
                     block.className = 'partition-block';
+                    block.dataset.num = p.number;
                     block.style.width = `${pct}%`;
 
                     const colors = {
@@ -224,12 +225,19 @@ async function loadPartitions() {
                     block.style.backgroundColor = bgColor;
 
                     const flagStr = p.flags ? ` [${p.flags}]` : '';
-                    block.innerText = `${p.name || p.fs || `P${p.number}`} (${formatBytes(sizeBytes)})${flagStr}`;
+                    if (pct < 8) {
+                        block.innerText = `${p.number}`;
+                    } else {
+                        block.innerText = `${p.name || p.fs || `P${p.number}`} ${formatBytes(sizeBytes)}`;
+                    }
                     block.title = `Partition ${p.number}: ${p.name || p.fs || 'Unknown'} (${formatBytes(sizeBytes)})${flagStr}`;
 
                     block.onclick = () => {
                         document.querySelectorAll('.partition-block').forEach(b => b.classList.remove('selected'));
+                        document.querySelectorAll('.partition-table tbody tr').forEach(r => r.classList.remove('selected'));
                         block.classList.add('selected');
+                        const row = document.querySelector(`.partition-table tbody tr[data-num="${p.number}"]`);
+                        if (row) row.classList.add('selected');
 
                         const num = p.number;
                         document.getElementById('format-num').value = num;
@@ -249,14 +257,14 @@ async function loadPartitions() {
                     currentOffset = endBytes;
 
                     tbody.innerHTML += `
-                        <tr>
-                            <td>${p.number}</td>
-                            <td>${p.start}</td>
-                            <td>${p.end}</td>
-                            <td>${sizeBytes ? formatBytes(sizeBytes) : p.size}</td>
-                            <td>${p.fs || 'N/A'}</td>
-                            <td>${p.name || 'N/A'}</td>
-                            <td>${p.flags || ''}</td>
+                        <tr data-num="${p.number}" onclick="selectPartitionBlock(${p.number})" style="cursor:pointer;">
+                            <td><strong>${p.number}</strong></td>
+                            <td>${p.fs ? `<span style="color:${bgColor};font-weight:600;">${p.fs}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                            <td>${p.name || '<span style="color:var(--text-muted);">—</span>'}</td>
+                            <td style="font-size:12px;color:var(--text-muted);">${p.start}</td>
+                            <td style="font-size:12px;color:var(--text-muted);">${p.end}</td>
+                            <td><strong>${formatBytes(sizeBytes)}</strong></td>
+                            <td style="font-size:12px;">${p.flags || '<span style="color:var(--text-muted);">—</span>'}</td>
                         </tr>
                     `;
                 });
@@ -444,4 +452,53 @@ async function executePartitionAction(action, params, statusDiv) {
     } catch (e) {
         statusDiv.innerHTML = `<span style="color: var(--accent-red);">Network Error: ${e.message}</span>`;
     }
+}
+
+async function batchWipeSelected() {
+    const checked = document.querySelectorAll('#drive-selector .drive-checkbox:checked');
+    if (checked.length === 0) {
+        customAlert('Please select at least one drive first.');
+        return;
+    }
+
+    const drives = Array.from(checked).map(cb => cb.dataset.drive);
+    const labelType = document.getElementById('batch-label-type').value;
+    const resultsDiv = document.getElementById('batch-results');
+
+    customConfirm(
+        `⚠ DANGER: This will destroy ALL data on ${drives.length} drive(s) by creating a new ${labelType.toUpperCase()} partition table on each.\n\nDrives:\n${drives.join('\n')}\n\nThis cannot be undone. Continue?`,
+        async () => {
+            resultsDiv.innerHTML = `<div class="batch-progress">Processing ${drives.length} drive(s)...</div>`;
+            const btn = document.getElementById('btn-batch-wipe');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/partitions/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drives, action: 'mklabel', params: [labelType] })
+                });
+                const data = await res.json();
+
+                let html = '';
+                if (data.results) {
+                    data.results.forEach(r => {
+                        const icon = r.status === 'success' ? '✅' : '❌';
+                        const color = r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)';
+                        html += `<div class="batch-result-row" style="color:${color};">${icon} <strong>${r.drive}</strong> — ${r.message}</div>`;
+                    });
+                }
+                const summaryColor = data.failed === 0 ? 'var(--accent-green)' : (data.succeeded > 0 ? 'var(--primary)' : 'var(--accent-red)');
+                html = `<div class="batch-summary" style="color:${summaryColor};">Complete: ${data.succeeded}/${data.total} succeeded, ${data.failed} failed</div>` + html;
+                resultsDiv.innerHTML = html;
+
+                if (data.succeeded > 0) fetchDrives();
+            } catch (e) {
+                resultsDiv.innerHTML = `<div class="batch-result-row" style="color:var(--accent-red);">Network error: ${e.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        },
+        "DANGER: Mass Data Destruction"
+    );
 }

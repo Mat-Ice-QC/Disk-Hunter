@@ -64,9 +64,9 @@
 .shred-select:focus { border-color: var(--primary); }
 
 /* --- Buttons --- */
-.btn-shred { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent-red), #b91c1c); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
+.btn-shred { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent-red), #b91c1c); color: white; border: none; border-radius: var(--radius-input); font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
 .btn-shred:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(239, 68, 68, 0.4); }
-.btn-modal-confirm { padding: 10px 20px; background: linear-gradient(135deg, var(--accent-red), #b91c1c); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
+.btn-modal-confirm { padding: 10px 20px; background: linear-gradient(135deg, var(--accent-red), #b91c1c); color: white; border: none; border-radius: var(--radius-input); font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
 .btn-modal-confirm:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(239, 68, 68, 0.4); }
 
 
