@@ -21,4 +21,4 @@ Le sous-menu enregistre les rapports des tests précédents, capturant les horod
 :::
 
 > [!NOTE]
-> Pour éviter toute activité disque inutile, les attributs S.M.A.R.T sont mis en cache pendant 30 secondes au niveau global. La page Aperçu des disques reçoit le statut de santé S.M.A.R.T (Réussi/Défaillant/N/D) via la diffusion WebSocket toutes les 30 secondes, éliminant le besoin de requêtes HTTP individuelles par disque à chaque rafraîchissement. Les rafraîchissements manuels de la page ne déclencheront pas de requêtes physiques au disque à moins que la fenêtre de cache n'ait expiré.
+> Pour éviter toute activité disque inutile, les attributs S.M.A.R.T sont mis en cache pendant 30 secondes au niveau global. Les rafraîchissements manuels de la page ne déclencheront pas de requêtes physiques au disque à moins que la fenêtre de cache n'ait expiré.

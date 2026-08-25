@@ -9,6 +9,7 @@ from .models import SmartRequest, StopRequest
 from .history import append_smartctl_history
 from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
+from .disks import validate_drive_path
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/smartctl/logs/python"
@@ -76,6 +77,8 @@ def smart_status():
 @router.post("/api/smart/stop")
 def stop_smart_test(request: StopRequest):
     try:
+        if not re.match(r"^disk_hunter_smartctl_[a-zA-Z0-9_.-]+$", request.container_name):
+            return {"status": "error", "message": "Invalid container name format."}
         logging.info(f"Stopping S.M.A.R.T. test container: {request.container_name}")
         # Abort the test inside the container first
         # Extract drive from container name
@@ -130,7 +133,6 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
 
 @router.get("/api/smart/logs/{container_name}")
 def get_smart_logs(container_name: str):
-    # Strict validation of container name format to prevent path traversal or flag injection
     if not re.match(r"^disk_hunter_smartctl_[a-zA-Z0-9_.-]+$", container_name):
         return {"status": "error", "message": "Invalid container name format."}
 
@@ -177,6 +179,10 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
 
         for drive in request.drives:
             drive_name = drive.split('/')[-1]
+            valid, err_msg = validate_drive_path(drive)
+            if not valid:
+                debug_logs.append(f"Rejected drive {drive}: {err_msg}")
+                continue
             debug_logs.append(f"Processing drive: {drive}")
 
             # Check if a test is already running for this drive

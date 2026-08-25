@@ -2,11 +2,26 @@ import subprocess
 import logging
 import re
 from fastapi import APIRouter, Request
-from .models import PartitionActionRequest, BatchPartitionRequest
+from .models import PartitionActionRequest, BatchPartitionRequest, PreparePartitionsRequest
 from .history import append_partition_history
 from .system import get_local_time, get_client_ip
+from .disks import validate_drive_path
 
 router = APIRouter()
+
+def get_drive_serial(drive: str) -> str:
+    """Resolve the serial number of the physical disk backing a drive/partition path."""
+    try:
+        parent = re.sub(r'\d+$', '', drive)
+        nvme_match = re.match(r"^(nvme\d+n\d+)p\d+$", parent.split('/')[-1])
+        if nvme_match:
+            parent = f"/dev/{nvme_match.group(1)}"
+        s_res = subprocess.run(["lsblk", "-n", "-o", "SERIAL", parent], capture_output=True, text=True)
+        if s_res.returncode == 0 and s_res.stdout.strip():
+            return s_res.stdout.strip()
+    except Exception:
+        pass
+    return "N/A"
 
 def run_parted(drive: str, args: list[str], debug_list: list = None):
     cmd = ["parted", "-s", "-m", drive] + args
@@ -29,6 +44,15 @@ def run_parted(drive: str, args: list[str], debug_list: list = None):
             stdout = ""
             stderr = "Command timed out"
         return FakeRes()
+
+def _parted_output_str(res) -> str:
+    """Combine stdout/stderr of a parted result into a single output blob for history."""
+    out = ""
+    if getattr(res, "stdout", ""):
+        out += res.stdout.strip()
+    if getattr(res, "stderr", ""):
+        out += ("\n" + res.stderr.strip()) if out else res.stderr.strip()
+    return out
 
 @router.get("/api/partitions")
 def get_partitions(drive: str):
@@ -100,16 +124,27 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
     debug_logs = []
     ip = get_client_ip(http_request)
     start_time = get_local_time()
+    valid, err_msg = validate_drive_path(req.drive)
+    if not valid:
+        debug_logs.append(f"Error: {err_msg}")
+        return {"status": "error", "message": err_msg, "debug": debug_logs}
 
-    if not re.match(r"^/dev/[a-zA-Z0-9_-]+$", req.drive):
-        debug_logs.append(f"Error: Invalid device path format: {req.drive}")
-        return {"status": "error", "message": "Invalid device path format.", "debug": debug_logs}
+    serial = get_drive_serial(req.drive)
+
     try:
         debug_logs.append(f"Received PartitionActionRequest: drive={req.drive}, action={req.action}, params={req.params}")
+        ALLOWED_PARTED_ACTIONS = {"mklabel", "mkpart", "rm", "set", "unit", "print", "resizepart", "name", "toggle"}
+        if req.action != "format" and req.action not in ALLOWED_PARTED_ACTIONS:
+            debug_logs.append(f"Error: Unsupported partition action: {req.action}")
+            return {"status": "error", "message": f"Unsupported action: {req.action}", "debug": debug_logs}
         if req.action == "format":
             part_number = req.params[0]
             fs_type = req.params[1]
-            
+            ALLOWED_FS_TYPES = {"ext2", "ext3", "ext4", "fat", "vfat", "fat32", "ntfs", "exfat", "xfs"}
+            if fs_type not in ALLOWED_FS_TYPES:
+                debug_logs.append(f"Error: Unsupported filesystem type: {fs_type}")
+                return {"status": "error", "message": f"Unsupported filesystem type: {fs_type}", "debug": debug_logs}
+
             part_path = f"{req.drive}{part_number}"
             if any(char.isdigit() for char in req.drive.split('/')[-1][-1:]):
                 part_path = f"{req.drive}p{part_number}"
@@ -137,8 +172,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         "timestamp": start_time,
                         "event": f"Format partition {part_path} as {fs_type} failed",
                         "drive": req.drive,
+                        "serial": serial,
                         "action": "format",
                         "params": req.params,
+                        "command": " ".join(mkfs_cmd),
+                        "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                         "username": ip,
                         "status": "error"
                     })
@@ -148,8 +186,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "timestamp": start_time,
                     "event": f"Formatted partition {part_path} as {fs_type}",
                     "drive": req.drive,
+                    "serial": serial,
                     "action": "format",
                     "params": req.params,
+                    "command": " ".join(mkfs_cmd),
+                    "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                     "username": ip,
                     "status": "success"
                 })
@@ -160,14 +201,18 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "timestamp": start_time,
                     "event": f"Format partition {part_path} as {fs_type} timed out",
                     "drive": req.drive,
+                    "serial": serial,
                     "action": "format",
                     "params": req.params,
+                    "command": " ".join(mkfs_cmd),
+                    "output": "Command timed out after 120 seconds",
                     "username": ip,
                     "status": "error"
                 })
                 return {"status": "error", "message": "Formatting timed out", "debug": debug_logs}
             
         else:
+            parted_cmd_str = " ".join(["parted", "-s", "-m", req.drive, req.action] + req.params)
             res = run_parted(req.drive, [req.action] + req.params, debug_list=debug_logs)
             if res.returncode != 0:
                 err_msg = res.stderr.strip() or res.stdout.strip()
@@ -178,14 +223,18 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         start_s = f"{match.group(1)}s"
                         end_s = f"{match.group(2)}s"
                         new_params = [req.params[0], start_s, end_s]
+                        aligned_cmd_str = " ".join(["parted", "-s", "-m", req.drive, "mkpart"] + new_params)
                         res2 = run_parted(req.drive, ["mkpart"] + new_params, debug_list=debug_logs)
                         if res2.returncode == 0:
                             append_partition_history({
                                 "timestamp": start_time,
                                 "event": f"Partition action {req.action} completed (aligned)",
                                 "drive": req.drive,
+                                "serial": serial,
                                 "action": req.action,
                                 "params": req.params,
+                                "command": aligned_cmd_str,
+                                "output": _parted_output_str(res2),
                                 "username": ip,
                                 "status": "success"
                             })
@@ -196,8 +245,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "timestamp": start_time,
                     "event": f"Partition action {req.action} failed",
                     "drive": req.drive,
+                    "serial": serial,
                     "action": req.action,
                     "params": req.params,
+                    "command": parted_cmd_str,
+                    "output": _parted_output_str(res),
                     "username": ip,
                     "status": "error"
                 })
@@ -207,8 +259,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                 "timestamp": start_time,
                 "event": f"Partition action {req.action} completed",
                 "drive": req.drive,
+                "serial": serial,
                 "action": req.action,
                 "params": req.params,
+                "command": parted_cmd_str,
+                "output": _parted_output_str(res),
                 "username": ip,
                 "status": "success"
             })
@@ -219,8 +274,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
             "timestamp": start_time,
             "event": f"Partition action {req.action} crashed",
             "drive": req.drive,
+            "serial": serial,
             "action": req.action,
             "params": req.params,
+            "command": "",
+            "output": str(e),
             "username": ip,
             "status": "error"
         })
@@ -236,14 +294,24 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
     ip = get_client_ip(http_request)
     start_time = get_local_time()
 
-    valid_drives = [d for d in req.drives if re.match(r"^/dev/[a-zA-Z0-9_-]+$", d)]
+    valid_drives = []
+    for d in req.drives:
+        v, msg = validate_drive_path(d)
+        if v:
+            valid_drives.append(d)
     if not valid_drives:
         return {"status": "error", "message": "No valid device paths provided."}
+
+    ALLOWED_PARTED_ACTIONS = {"mklabel", "mkpart", "rm", "set", "unit", "print", "resizepart", "name", "toggle"}
+    if req.action not in ALLOWED_PARTED_ACTIONS:
+        return {"status": "error", "message": f"Unsupported action: {req.action}"}
 
     results = []
     for drive in valid_drives:
         drive_debug = []
         drive_start = get_local_time()
+        drive_serial = get_drive_serial(drive)
+        parted_cmd_str = " ".join(["parted", "-s", "-m", drive, req.action] + req.params)
         try:
             res = run_parted(drive, [req.action] + req.params, debug_list=drive_debug)
             ok = res.returncode == 0
@@ -255,8 +323,11 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
                 "timestamp": drive_start,
                 "event": f"Batch {req.action} {'completed' if ok else 'failed'} on {drive}",
                 "drive": drive,
+                "serial": drive_serial,
                 "action": req.action,
                 "params": req.params,
+                "command": parted_cmd_str,
+                "output": _parted_output_str(res),
                 "username": ip,
                 "status": "success" if ok else "error"
             })
@@ -266,12 +337,98 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
                 "timestamp": drive_start,
                 "event": f"Batch {req.action} crashed on {drive}",
                 "drive": drive,
+                "serial": drive_serial,
                 "action": req.action,
                 "params": req.params,
+                "command": parted_cmd_str,
+                "output": str(e),
                 "username": ip,
                 "status": "error"
             })
             results.append({"drive": drive, "status": "error", "message": str(e), "debug": drive_debug})
+
+    succeeded = sum(1 for r in results if r["status"] == "success")
+    failed = len(results) - succeeded
+    return {
+        "status": "success" if failed == 0 else ("partial" if succeeded > 0 else "error"),
+        "total": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results
+    }
+
+
+@router.post("/api/partitions/prepare")
+def partition_prepare(req: PreparePartitionsRequest, http_request: Request):
+    """Creates a fresh partition table and a single spanning partition on
+    each listed drive so they can be used for speed testing.
+
+    For every drive this runs (destructively):
+        parted -s -m <drive> mklabel <label>
+        parted -s -m <drive> mkpart primary <fs> 0% <size>
+
+    Only invoked on explicit user action from the Speed Test page. Returns
+    per-drive results.
+    """
+    ip = get_client_ip(http_request)
+    start_time = get_local_time()
+
+    valid_drives = []
+    for d in req.drives:
+        v, msg = validate_drive_path(d)
+        if v:
+            valid_drives.append(d)
+    if not valid_drives:
+        return {"status": "error", "message": "No valid device paths provided."}
+
+    label = req.label or "gpt"
+    fs_type = req.fs_type or "ext4"
+    size = req.size or "100%"
+    if label not in ("gpt", "msdos"):
+        return {"status": "error", "message": "Invalid partition table label. Use 'gpt' or 'msdos'."}
+
+    results = []
+    for drive in valid_drives:
+        drive_debug = []
+        drive_serial = get_drive_serial(drive)
+        commands = []
+        outputs = []
+        ok = True
+        msg = "OK"
+        try:
+            mklabel_cmd = ["parted", "-s", "-m", drive, "mklabel", label]
+            commands.append(" ".join(mklabel_cmd))
+            res1 = run_parted(drive, ["mklabel", label], debug_list=drive_debug)
+            outputs.append(_parted_output_str(res1))
+            if res1.returncode != 0:
+                ok = False
+                msg = res1.stderr.strip() or res1.stdout.strip() or "mklabel failed"
+            else:
+                mkpart_cmd = ["parted", "-s", "-m", drive, "mkpart", "primary", fs_type, "0%", size]
+                commands.append(" ".join(mkpart_cmd))
+                res2 = run_parted(drive, ["mkpart", "primary", fs_type, "0%", size], debug_list=drive_debug)
+                outputs.append(_parted_output_str(res2))
+                if res2.returncode != 0:
+                    ok = False
+                    msg = res2.stderr.strip() or res2.stdout.strip() or "mkpart failed"
+        except Exception as e:
+            ok = False
+            msg = str(e)
+            outputs.append(str(e))
+
+        append_partition_history({
+            "timestamp": start_time,
+            "event": f"Prepare partitions {'completed' if ok else 'failed'} on {drive}",
+            "drive": drive,
+            "serial": drive_serial,
+            "action": "prepare",
+            "params": [label, fs_type, size],
+            "command": "\n".join(commands),
+            "output": "\n".join(o for o in outputs if o),
+            "username": ip,
+            "status": "success" if ok else "error"
+        })
+        results.append({"drive": drive, "status": "success" if ok else "error", "message": msg, "debug": drive_debug})
 
     succeeded = sum(1 for r in results if r["status"] == "success")
     failed = len(results) - succeeded

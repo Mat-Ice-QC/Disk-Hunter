@@ -60,6 +60,9 @@ body { background: linear-gradient(135deg, var(--bg-dark), #020617); color: var(
 .sys-info { display: flex; gap: 30px; }
 .info-pill { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 8px; font-size: 14px; color: var(--text-muted); border: 1px solid rgba(255,255,255,0.05); }
 .info-pill span { color: var(--text-main); font-weight: 600; }
+a.info-pill, .temp-pill-link { text-decoration: none; color: var(--text-muted); cursor: pointer; }
+a.info-pill:hover, .temp-pill-link:hover { border-color: var(--primary); }
+.extra-temp-pill { cursor: default; }
 .temp-icon { color: var(--accent-red); }
 .ip-icon { color: var(--accent-green); }
 .time-icon { color: var(--primary); }

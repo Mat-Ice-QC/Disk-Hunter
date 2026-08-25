@@ -1,15 +1,98 @@
 from fastapi import APIRouter
 from datetime import datetime
 import os
+import json
 import shutil
 
-from .config import REPORTS_DIR, ISO_DIR, DATA_DIR, DRIVES_DIR
+from .config import REPORTS_DIR, ISO_DIR, DATA_DIR, DRIVES_DIR, BRANDING_FILE, APP_SETTINGS_FILE
 from .history import append_history
-from .models import MockPipelineRequest
-from .system import get_local_time
+from .models import MockPipelineRequest, BrandingRequest, TemperatureConfigRequest
+from .system import get_local_time, get_thermal_zones
 from .pdf_generator import generate_erasure_certificate
 
 router = APIRouter()
+
+
+def _read_json_file(path, default):
+    try:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                content = f.read().strip()
+                if content:
+                    return json.loads(content)
+    except Exception:
+        pass
+    return default
+
+
+def _write_json_file(path, data):
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4)
+        return True
+    except Exception as e:
+        print(f"Failed to write {path}: {e}")
+        return False
+
+
+# --- Branding (server-side persistence on the Disk Hunter machine) ---
+@router.get("/api/settings/branding")
+def get_branding():
+    data = _read_json_file(BRANDING_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "status": "success",
+        "branding": {
+            "company_name": data.get("company_name", ""),
+            "company_address": data.get("company_address", ""),
+            "company_phone": data.get("company_phone", ""),
+            "dc_tags": data.get("dc_tags", []),
+        },
+    }
+
+
+@router.post("/api/settings/branding")
+def save_branding(req: BrandingRequest):
+    data = {
+        "company_name": req.company_name or "",
+        "company_address": req.company_address or "",
+        "company_phone": req.company_phone or "",
+        "dc_tags": req.dc_tags or [],
+    }
+    if _write_json_file(BRANDING_FILE, data):
+        return {"status": "success", "message": "Branding saved to the Disk Hunter machine."}
+    return {"status": "error", "message": "Failed to save branding."}
+
+
+# --- Temperature configuration (machine-level, server-side) ---
+@router.get("/api/settings/temperature")
+def get_temperature_config():
+    data = _read_json_file(APP_SETTINGS_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "status": "success",
+        "config": {
+            "collect_temperature": data.get("collect_temperature", True),
+            "thermal_devices": data.get("thermal_devices", []),
+        },
+        "available": get_thermal_zones(),
+    }
+
+
+@router.post("/api/settings/temperature")
+def save_temperature_config(req: TemperatureConfigRequest):
+    data = _read_json_file(APP_SETTINGS_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    data["collect_temperature"] = req.collect_temperature
+    # Sanitize device ids: only allow ids that currently exist on the host.
+    valid_ids = {z["id"] for z in get_thermal_zones()}
+    data["thermal_devices"] = [d for d in (req.thermal_devices or []) if d in valid_ids]
+    if _write_json_file(APP_SETTINGS_FILE, data):
+        return {"status": "success", "message": "Temperature settings saved."}
+    return {"status": "error", "message": "Failed to save temperature settings."}
 
 @router.delete("/api/settings/clear-isos")
 def clear_all_isos():

@@ -19,6 +19,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Immediate HTTP scan fallback
     fetchDisks();
 
+    // Rescan hardware button
+    const btnRescan = document.getElementById('btn-rescan-hardware');
+    if (btnRescan) {
+        btnRescan.addEventListener('click', () => {
+            customConfirm('Rescan PCIe and SCSI buses for newly connected drives? This takes a few seconds.', async () => {
+                const originalText = btnRescan.innerText;
+                btnRescan.disabled = true;
+                btnRescan.innerText = 'Scanning...';
+                try {
+                    const res = await fetch('/api/system/rescan', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        customAlert(data.results.join('\n'), 'Rescan Complete');
+                        window.diskService.cache = null;
+                        fetchDisks();
+                    } else {
+                        customAlert('Rescan failed: ' + (data.message || 'unknown error'), 'Error');
+                    }
+                } catch (e) {
+                    customAlert('Network error during rescan.', 'Error');
+                } finally {
+                    btnRescan.disabled = false;
+                    btnRescan.innerText = originalText;
+                }
+            }, 'Rescan Hardware');
+        });
+    }
+
     // 2. WebSocket real-time synchronizers
     document.addEventListener('ws-disks', (e) => {
         renderDisks(e.detail);

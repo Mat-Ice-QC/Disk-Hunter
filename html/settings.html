@@ -14,74 +14,178 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <h2 class="title-main">General Settings</h2>
-            
-            <div class="settings-grid">
-                
-                <div class="flex-col-gap-20">
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>Drive Image Manager</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <p>Manage custom images for specific drive models. Mass upload PNG/JPG files and visually assign them to drives.</p>
-                            <button id="btn-open-drive-manager" class="btn-action btn-primary-inline w-100">Open Drive Manager</button>
-                        </div>
-                    </div>
+            <div class="settings-page">
+                <h2 class="settings-page-title">Settings</h2>
 
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>Potato PC Rendering</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <div class="setting-toggle-row mt-0">
-                                <input type="checkbox" id="potato-mode-toggle" class="setting-checkbox checkbox-warning">
-                                <label for="potato-mode-toggle" class="setting-label">Enable Potato PC Mode</label>
+                <!-- Appearance -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Appearance</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Potato PC Mode</div>
+                                <div class="setting-row-desc">Disables blur effects and animations to reduce GPU usage.</div>
                             </div>
-                            <p class="setting-desc">Disables all glassmorphism blur effects and animations to reduce GPU usage.</p>
+                            <div class="setting-row-control">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="potato-mode-toggle">
+                                    <span class="toggle-slider toggle-slider-warning"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Drive Image Manager</div>
+                                <div class="setting-row-desc">Assign custom images to specific drive models.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <button id="btn-open-drive-manager" class="btn-action btn-sm">Open Manager</button>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">System Timezone</div>
+                                <div class="setting-row-desc">Used for stamping audit logs and erasure certificates.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-wide">
+                                <select id="timezone-select" class="settings-select">
+                                    <option value="UTC">UTC</option>
+                                    <option value="America/Toronto">Eastern (US &amp; Canada)</option>
+                                    <option value="America/Chicago">Central (US &amp; Canada)</option>
+                                    <option value="America/Denver">Mountain (US &amp; Canada)</option>
+                                    <option value="America/Los_Angeles">Pacific (US &amp; Canada)</option>
+                                    <option value="Europe/London">London (GMT/BST)</option>
+                                    <option value="Europe/Paris">Central Europe (CET/CEST)</option>
+                                    <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+                                </select>
+                                <button id="btn-save-tz" class="btn-action btn-sm">Save</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card settings-card">
-                    <div class="card-header-flex" onclick="toggleCard(this)">
-                        <h3>Branding</h3>
-                        <span class="minimize-icon">▼</span>
+                <!-- Safety -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Safety</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Protect Root Drive</div>
+                                <div class="setting-row-desc">Hides the OS drive from Shredding, SMART tests, Speed Test, and Partition Editor.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="protect-root-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Generate Certificate of Erasure</div>
+                                <div class="setting-row-desc">Automatically generates a PDF certificate when a wipe completes.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="pdf-report-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-content">
-                        <p>Customize the details printed on your PDF certificates and manage your available datacenters.</p>
-                        <div class="form-box">
-                            <label class="form-label">Company Name</label>
-                            <input type="text" id="comp-name" class="form-input-text" placeholder="Disk Hunter">
-                            
-                            <label class="form-label">Company Address</label>
-                            <input type="text" id="comp-addr" class="form-input-text" placeholder="N/A">
-                            
-                            <label class="form-label">Company Phone</label>
-                            <input type="text" id="comp-phone" class="form-input-text" placeholder="N/A">
-                            <button id="btn-save-branding" class="btn-submit mb-20">Save Text Details</button>
+                </div>
 
-                           <form id="logo-form" class="form-divider">
-                                <label class="form-label">Current Company Logo</label>
-                                <div class="logo-preview-box">
-                                    <img id="logo-preview-img" alt="Company Logo Preview" style="max-height: 80px; max-width: 100%;">
-                                    <div id="no-logo-text" class="no-logo-text">No logo uploaded yet.</div>
+                <!-- Temperature -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Temperature</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Collect Temperature Data</div>
+                                <div class="setting-row-desc">Enables temperature readings in the header. Stored on the Disk Hunter machine.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="collect-temperature-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-row setting-row-column">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Header Sensors</div>
+                                <div class="setting-row-desc">Select which temperature sensors appear in the header.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-full">
+                                <div id="thermal-device-list" class="thermal-device-list">
+                                    <p class="thermal-loading">Loading sensors...</p>
                                 </div>
+                                <div class="setting-row-actions">
+                                    <button id="btn-save-temperature" class="btn-action btn-sm">Save Temperature</button>
+                                    <span id="temperature-status" class="setting-status"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                                <label class="form-label" for="logo-file">Upload New Logo (JPG/PNG)</label>
-                                <input type="file" id="logo-file" class="form-input-file" accept="image/png, image/jpeg" required>
-                                <button type="submit" class="btn-action btn-primary-inline w-100">Upload Logo</button>
-                            </form>
-
-                            <div id="logo-status" class="status-msg center"></div>
-
-                            <div class="form-divider">
-                                <label class="form-label">Datacenter Tags</label>
-                                <div class="action-row mt-0">
-                                    <input type="text" id="new-tag-input" class="form-input-text mb-0" placeholder="e.g. DatacenterX">
-                                    <button id="btn-add-tag" class="btn-action btn-primary-inline">Add</button>
+                <!-- Branding -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Branding</div>
+                    <div class="settings-list">
+                        <div class="setting-row setting-row-column">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Company Details</div>
+                                <div class="setting-row-desc">Printed on PDF certificates. Saved on the Disk Hunter machine.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-full">
+                                <div class="settings-form-grid">
+                                    <label class="settings-field">
+                                        <span class="settings-field-label">Company Name</span>
+                                        <input type="text" id="comp-name" class="settings-input" placeholder="Disk Hunter">
+                                    </label>
+                                    <label class="settings-field">
+                                        <span class="settings-field-label">Address</span>
+                                        <input type="text" id="comp-addr" class="settings-input" placeholder="N/A">
+                                    </label>
+                                    <label class="settings-field">
+                                        <span class="settings-field-label">Phone</span>
+                                        <input type="text" id="comp-phone" class="settings-input" placeholder="N/A">
+                                    </label>
+                                </div>
+                                <div class="setting-row-actions">
+                                    <button id="btn-save-branding" class="btn-action btn-sm">Save Details</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-row setting-row-column">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Company Logo</div>
+                                <div class="setting-row-desc">Displayed in the header and on PDF certificates.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-full">
+                                <div class="logo-row">
+                                    <div class="logo-preview-small">
+                                        <img id="logo-preview-img" alt="Logo" style="max-height: 48px; max-width: 120px;">
+                                        <div id="no-logo-text" class="no-logo-text">No logo uploaded.</div>
+                                    </div>
+                                    <form id="logo-form" class="logo-upload-form">
+                                        <input type="file" id="logo-file" class="settings-file-input" accept="image/png, image/jpeg" required>
+                                        <button type="submit" class="btn-action btn-sm">Upload</button>
+                                    </form>
+                                </div>
+                                <div id="logo-status" class="setting-status"></div>
+                            </div>
+                        </div>
+                        <div class="setting-row setting-row-column">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Datacenter Tags</div>
+                                <div class="setting-row-desc">Available datacenters for drive assignment.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-full">
+                                <div class="tag-input-row">
+                                    <input type="text" id="new-tag-input" class="settings-input" placeholder="Add a datacenter tag...">
+                                    <button id="btn-add-tag" class="btn-action btn-sm">Add</button>
                                 </div>
                                 <div id="tag-container" class="tag-container"></div>
                             </div>
@@ -89,103 +193,54 @@
                     </div>
                 </div>
 
-                <div class="flex-col-gap-20">
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>Configuration</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <p>Export or Import your local configuration settings (branding, UI preferences).</p>
-                            <button id="btn-export-config" class="btn-action btn-primary-inline w-100 mb-10">Export Config (JSON)</button>
-                            <input type="file" id="import-config-file" accept=".json" style="display:none;">
-                            <button id="btn-import-config" class="btn-action w-100" style="background:#334155; color:white;">Import Config (JSON)</button>
-                            <div id="config-status" class="status-msg center"></div>
-                        </div>
-                    </div>
-
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>Safety & Protection</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <div class="setting-toggle-row">
-                                <input type="checkbox" id="protect-root-toggle" class="setting-checkbox checkbox-primary" checked>
-                                <label for="protect-root-toggle" class="setting-label">Protect Root Drive</label>
+                <!-- Config -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Configuration</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Export / Import Config</div>
+                                <div class="setting-row-desc">Backup or restore your local settings (branding, UI preferences).</div>
                             </div>
-                            <p class="setting-desc">Hides the primary operating system drive from Shredding, SMART tests, and Partition Editor to prevent accidental data loss. It will still be visible in the Index overview.</p>
-                        </div>
-                    </div>
-
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>System Timezone</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <p>Set the localized timezone used for stamping Audit Logs and Erasure Certificates.</p>
-                            <div class="form-box">
-                                <select id="timezone-select" class="form-input-text mb-10">
-                                    <option value="UTC">Universal Coordinated Time (UTC)</option>
-                                    <option value="America/Toronto">Eastern Time (US & Canada)</option>
-                                    <option value="America/Chicago">Central Time (US & Canada)</option>
-                                    <option value="America/Denver">Mountain Time (US & Canada)</option>
-                                    <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>
-                                    <option value="Europe/London">London (GMT/BST)</option>
-                                    <option value="Europe/Paris">Central Europe (CET/CEST)</option>
-                                    <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
-                                </select>
-                                <button id="btn-save-tz" class="btn-submit">Save Timezone</button>
+                            <div class="setting-row-control">
+                                <button id="btn-export-config" class="btn-action btn-sm">Export</button>
+                                <button id="btn-import-config" class="btn-action btn-sm">Import</button>
+                                <input type="file" id="import-config-file" accept=".json" style="display:none;">
                             </div>
                         </div>
-                    </div>
-
-                    <div class="card settings-card">
-                        <div class="card-header-flex" onclick="toggleCard(this)">
-                            <h3>Shredding Reports</h3>
-                            <span class="minimize-icon">▼</span>
-                        </div>
-                        <div class="card-content">
-                            <div class="setting-toggle-row">
-                                <input type="checkbox" id="pdf-report-toggle" class="setting-checkbox checkbox-primary">
-                                <label for="pdf-report-toggle" class="setting-label">Generate Certificate of Erasure</label>
-                            </div>
-                            <p class="setting-desc">When enabled, a professional PDF receipt will be generated and saved into the Audit Logs every time a wipe completes.</p>
-                        </div>
-                    </div> <!-- Close card -->
-                </div> <!-- Close flex-col-gap-20 -->
-            </div> <!-- Close settings-grid -->
-            
-            <h2 class="section-header">Debug & Developer Tools</h2>
-            <div class="settings-grid">
-
-                <div class="card settings-card card-warning">
-                    <div class="card-header-flex" onclick="toggleCard(this)">
-                        <h3>API Debug Console</h3>
-                        <span class="minimize-icon">▼</span>
-                    </div>
-                    <div class="card-content">
-                        <div class="setting-toggle-row">
-                            <input type="checkbox" id="debug-mode-toggle" class="setting-checkbox checkbox-warning">
-                                <label for="debug-mode-toggle" class="setting-label">Enable UI Debug Console</label>
-                        </div>
-                        <p class="setting-desc">When enabled, the shredding page will display a diagnostic terminal outputting raw Docker commands, payloads, and backend errors.</p>
                     </div>
                 </div>
 
-                <div class="card settings-card card-purple">
-                    <div class="card-header-flex" onclick="toggleCard(this)">
-                        <h3>Mock Wipe Pipeline</h3>
-                        <span class="minimize-icon">▼</span>
-                    </div>
-                    <div class="card-content">
-                        <p>Instantly simulate a successful drive wipe to force the backend to generate a Certificate of Erasure and inject it into the Audit Logs.</p>
-                        <button id="btn-mock-pipeline" class="btn-action btn-purple-inline">Trigger Mock Success</button>
-                        <div id="mock-pipeline-status" class="status-msg"></div>
+                <!-- Developer -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Developer Tools</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">API Debug Console</div>
+                                <div class="setting-row-desc">Overlays a diagnostic terminal on every page showing API calls and errors.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="debug-mode-toggle">
+                                    <span class="toggle-slider toggle-slider-warning"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Mock Wipe Pipeline</div>
+                                <div class="setting-row-desc">Simulate a successful wipe to generate a test PDF certificate.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <button id="btn-mock-pipeline" class="btn-action btn-sm">Trigger</button>
+                                <span id="mock-pipeline-status" class="setting-status"></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
+                <div id="config-status" class="setting-status"></div>
             </div>
         </div>
     </div>
@@ -201,22 +256,16 @@
                 <div class="drive-list-pane">
                     <h3 style="margin-top:0; color:var(--text-main);">Drive Models</h3>
                     <p style="font-size:13px; color:var(--text-muted); margin-bottom:15px;">Select an image from the pool and assign it to a drive model.</p>
-                    <div id="drive-models-list">
-                        <!-- Populated by JS -->
-                    </div>
+                    <div id="drive-models-list"></div>
                 </div>
                 <div class="image-pool-pane">
                     <h3 style="margin-top:0; color:var(--text-main);">Image Pool</h3>
-                    
                     <div id="dropzone" class="dropzone">
                         <p>Click or drag & drop PNG/JPG files to mass upload</p>
                         <input type="file" id="mass-upload-input" multiple accept="image/png, image/jpeg" style="display:none;">
                     </div>
                     <div id="mass-upload-status" style="font-size: 13px; margin-bottom: 10px; text-align: center;"></div>
-                    
-                    <div id="image-pool-grid" class="image-pool-grid">
-                        <!-- Populated by JS -->
-                    </div>
+                    <div id="image-pool-grid" class="image-pool-grid"></div>
                 </div>
             </div>
         </div>

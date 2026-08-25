@@ -108,40 +108,7 @@ def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "
     if os.path.exists(exact_file_path):
         return FileResponse(exact_file_path)
 
-    # Get all available image basenames from the directory
-    available_images = []
-    if os.path.exists(DRIVES_DIR):
-        try:
-            available_images = [f.rsplit('.', 1)[0] for f in os.listdir(DRIVES_DIR) if f.endswith('.jpg')]
-        except Exception:
-            pass
-
-    # 2. Token-based scoring match
-    if available_images:
-        def tokenize(text: str) -> set:
-            return set(re.sub(r'[^a-z0-9]', ' ', text.lower()).split())
-
-        req_tokens = tokenize(requested_base)
-        best_match_name = None
-        best_score = 0
-        
-        for img_base in available_images:
-            img_tokens = tokenize(img_base)
-            intersection = req_tokens.intersection(img_tokens)
-            score = len(intersection)
-            extra_tokens = len(img_tokens - req_tokens)
-            final_score = score - (extra_tokens * 0.5)
-            
-            if final_score > best_score and final_score > 0:
-                best_score = final_score
-                best_match_name = img_base
-
-        if best_match_name:
-            file_path = os.path.join(DRIVES_DIR, f"{best_match_name}.jpg")
-            if os.path.exists(file_path):
-                return FileResponse(file_path)
-
-    # 3. Serving the default SVG matching the drive type
+    # 2. Serving the default SVG matching the drive type
     name_lower = name.lower()
     tran_lower = tran.lower()
     model_lower = model.lower()
@@ -177,7 +144,6 @@ async def upload_image(drive_id: str = Form(...), file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
     try:
-        # Sanitize drive_id to prevent path traversal
         safe_drive_id = os.path.basename(drive_id)
         file_path = os.path.join(DRIVES_DIR, f"{safe_drive_id}.jpg")
         
@@ -209,6 +175,8 @@ async def upload_pool_images(files: List[UploadFile] = File(...)):
         for file in files:
             if file.content_type.startswith('image/'):
                 safe_name = os.path.basename(file.filename)
+                if safe_name in (".", ".."):
+                    continue
                 with open(os.path.join(POOL_DIR, safe_name), "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
         return {"status": "success"}
@@ -220,13 +188,13 @@ def list_pool_images():
     images = set()
     if os.path.exists(POOL_DIR):
         images.update([f for f in os.listdir(POOL_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))])
-    if os.path.exists(DRIVES_DIR):
-        images.update([f for f in os.listdir(DRIVES_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))])
-    return {"images": list(images)}
+    return {"images": sorted(images)}
 
 @router.get("/api/images/pool/{filename}")
 def get_pool_image(filename: str):
     safe_filename = os.path.basename(filename)
+    if safe_filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     pool_path = os.path.join(POOL_DIR, safe_filename)
     drives_path = os.path.join(DRIVES_DIR, safe_filename)
     if os.path.exists(pool_path):
@@ -238,9 +206,12 @@ def get_pool_image(filename: str):
 @router.post("/api/images/assign")
 async def assign_drive_image(drive_id: str = Form(...), pool_filename: str = Form(...)):
     try:
-        source_path = os.path.join(POOL_DIR, os.path.basename(pool_filename))
+        safe_pool_name = os.path.basename(pool_filename)
+        if safe_pool_name in (".", ".."):
+            raise HTTPException(status_code=400, detail="Invalid pool filename")
+        source_path = os.path.join(POOL_DIR, safe_pool_name)
         if not os.path.exists(source_path):
-            source_path = os.path.join(DRIVES_DIR, os.path.basename(pool_filename))
+            source_path = os.path.join(DRIVES_DIR, safe_pool_name)
         if not os.path.exists(source_path):
             raise HTTPException(status_code=404, detail="Pool image not found")
             

@@ -8,11 +8,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnExport) {
         btnExport.addEventListener('click', exportToCSV);
     }
+
+    const btnCloseDetail = document.getElementById('btn-log-detail-close');
+    if (btnCloseDetail) {
+        btnCloseDetail.addEventListener('click', () => document.getElementById('log-detail-modal').classList.remove('active'));
+    }
 });
 
 async function fetchHistory() {
     const tbody = document.getElementById('history-body');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
     
     try {
         const response = await fetch('/api/partition-history');
@@ -21,11 +26,11 @@ async function fetchHistory() {
         if (data.status === 'success') {
             renderHistory(data.history);
         } else {
-            tbody.innerHTML = `<tr><td colspan="7" style="color: var(--accent-red); text-align: center;">Error: ${data.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" style="color: var(--accent-red); text-align: center;">Error: ${data.message}</td></tr>`;
         }
     } catch (error) {
         console.error("History fetch error:", error);
-        tbody.innerHTML = '<tr><td colspan="7" style="color: var(--accent-red); text-align: center;">Failed to load history due to a network error.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="color: var(--accent-red); text-align: center;">Failed to load history due to a network error.</td></tr>';
     }
 }
 
@@ -34,16 +39,18 @@ function renderHistory(history) {
     tbody.innerHTML = '';
     
     if (!history || history.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No partition history found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No partition history found.</td></tr>';
         return;
     }
     
-    history.forEach(entry => {
+    history.forEach((entry, index) => {
         let statusColor = "var(--text-main)";
         if (entry.status === 'success') statusColor = "var(--accent-green)";
         if (entry.status === 'error') statusColor = "var(--accent-red)";
 
         const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.title = 'Click to view the command and worker output';
         
         const paramsStr = entry.params && Array.isArray(entry.params) ? entry.params.join(', ') : 'None';
 
@@ -51,14 +58,32 @@ function renderHistory(history) {
             <td style="white-space: nowrap;">${new Date(entry.timestamp).toLocaleString()}</td>
             <td style="color: var(--text-main); font-weight: bold;">${entry.event}</td>
             <td>${entry.drive || 'N/A'}</td>
+            <td><code>${entry.serial || 'N/A'}</code></td>
             <td style="text-transform: uppercase; font-size: 12px; font-weight: bold; color: var(--primary);">${entry.action || 'N/A'}</td>
             <td><code>${paramsStr}</code></td>
             <td>${entry.username || 'Unknown'}</td>
             <td style="color: ${statusColor}; font-weight: bold; text-transform: uppercase;">${entry.status}</td>
         `;
-        
+
+        tr.addEventListener('click', () => showLogDetail(entry));
         tbody.appendChild(tr);
     });
+}
+
+function showLogDetail(entry) {
+    const modal = document.getElementById('log-detail-modal');
+    if (!modal) return;
+    document.getElementById('log-detail-drive').innerText = entry.drive || 'N/A';
+    document.getElementById('log-detail-serial').innerText = entry.serial || 'N/A';
+    document.getElementById('log-detail-event').innerText = entry.event || 'N/A';
+    const statusEl = document.getElementById('log-detail-status');
+    if (statusEl) {
+        statusEl.innerText = entry.status || 'N/A';
+        statusEl.style.color = entry.status === 'success' ? 'var(--accent-green)' : (entry.status === 'error' ? 'var(--accent-red)' : 'var(--text-main)');
+    }
+    document.getElementById('log-detail-command').textContent = entry.command || 'N/A';
+    document.getElementById('log-detail-output').textContent = entry.output || 'N/A';
+    modal.classList.add('active');
 }
 
 function clearHistory() {
@@ -87,11 +112,11 @@ function exportToCSV() {
         return;
     }
 
-    let csvContent = "Date & Time,Event,Drive,Action,Parameters,User (IP),Status\n";
+    let csvContent = "Date & Time,Event,Drive,S/N,Action,Parameters,User (IP),Status\n";
 
     rows.forEach(row => {
         const cols = row.querySelectorAll('td');
-        if (cols.length === 7) {
+        if (cols.length === 8) {
             const rowData = Array.from(cols).map(col => `"${String(col.innerText).replace(/"/g, '""')}"`);
             csvContent += rowData.join(",") + "\n";
         }

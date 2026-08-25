@@ -36,6 +36,22 @@ class BatchPartitionRequest(BaseModel):
     action: str
     params: list[str] = []
 
+class PreparePartitionsRequest(BaseModel):
+    drives: list[str]
+    label: str = "gpt"
+    fs_type: str = "ext4"
+    size: str = "100%"
+
+class BrandingRequest(BaseModel):
+    company_name: str = ""
+    company_address: str = ""
+    company_phone: str = ""
+    dc_tags: list[str] = []
+
+class TemperatureConfigRequest(BaseModel):
+    collect_temperature: bool = True
+    thermal_devices: list[str] = []
+
 class SpeedtestRequest(BaseModel):
     drives: list[str]
     test_type: str = "read"

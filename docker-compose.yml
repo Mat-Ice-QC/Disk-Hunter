@@ -1,6 +1,6 @@
 services:
   disk-hunter-ui:
-    image: nginx:alpine
+    image: ${NGINX_IMAGE:-nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10}
     container_name: disk_hunter_ui
     restart: unless-stopped
     env_file: .env
@@ -12,7 +12,10 @@ services:
     network_mode: host
 
   disk-hunter-api:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        PYTHON_IMAGE: ${PYTHON_310_IMAGE:-python:3.10@sha256:7592f66a25f37c4e88ac9d1eee26b0fd7b6d5d56ace531ffa6aaf3a5317cde27}
     container_name: disk_hunter_api
     restart: unless-stopped
     privileged: true 
@@ -26,23 +29,48 @@ services:
     network_mode: host
 
   disk-hunter-nwipe:
-    build: ./workers/nwipe
+    build:
+      context: ./workers/nwipe
+      args:
+        DEBIAN_IMAGE: ${DEBIAN_BOOKWORM_SLIM_IMAGE:-debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241}
     image: disk-hunter-nwipe
 
   disk-hunter-smartctl-test:
-    build: ./workers/smartctl-test
+    build:
+      context: ./workers/smartctl-test
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        SMARTMONTOOLS_VERSION: ${SMARTMONTOOLS_VERSION:-7.4-r1}
+        SED_VERSION: ${SED_VERSION:-4.9-r2}
     image: disk-hunter-smartctl-test
 
   disk-hunter-nvme:
-    build: ./workers/nvme
+    build:
+      context: ./workers/nvme
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        NVME_CLI_VERSION: ${NVME_CLI_VERSION:-2.9.1-r0}
     image: disk-hunter-nvme
 
   disk-hunter-hdparm:
-    build: ./workers/hdparm
+    build:
+      context: ./workers/hdparm
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        HDPARM_VERSION: ${HDPARM_VERSION:-9.65-r2}
+        UTIL_LINUX_VERSION: ${UTIL_LINUX_VERSION:-2.40.1-r1}
+        GREP_VERSION: ${GREP_VERSION:-3.11-r0}
     image: disk-hunter-hdparm
 
   disk-hunter-parted:
-    build: ./workers/parted
+    build:
+      context: ./workers/parted
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        PARTED_VERSION: ${PARTED_VERSION:-3.6-r2}
+        E2FSPROGS_VERSION: ${E2FSPROGS_VERSION:-1.47.0-r5}
+        UTIL_LINUX_VERSION: ${UTIL_LINUX_VERSION:-2.40.1-r1}
+        DOSFSTOOLS_VERSION: ${DOSFSTOOLS_VERSION:-4.2-r2}
     image: disk-hunter-parted
     container_name: disk_hunter_parted
     restart: unless-stopped
@@ -54,7 +82,10 @@ services:
     network_mode: "host"
 
   disk-hunter-smart-provider:
-    build: ./smart-provider
+    build:
+      context: ./smart-provider
+      args:
+        PYTHON_IMAGE: ${PYTHON_311_SLIM_IMAGE:-python:3.11-slim@sha256:9c900dea9e8fb7e16277c179b555cc72d29a352dbc33cff48ad5a0412fd5bfc7}
     image: disk-hunter-smart-provider
     container_name: disk_hunter_smart_provider
     restart: unless-stopped
@@ -64,7 +95,13 @@ services:
     network_mode: "host"
 
   disk-hunter-speedtest:
-    build: ./workers/speedtest-worker
+    build:
+      context: ./workers/speedtest-worker
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        FIO_VERSION: ${FIO_VERSION:-3.36-r0}
+        SED_VERSION: ${SED_VERSION:-4.9-r2}
+        JQ_VERSION: ${JQ_VERSION:-1.7.1-r0}
     image: disk-hunter-speedtest
 
   # Local console kiosk: runs Firefox ESR in kiosk mode on the host's tty2,
@@ -75,15 +112,16 @@ services:
   # `docker compose up`. Enable with: docker compose --profile kiosk up -d --build
   # KIOSK_URL (see .env.example) selects the startup page.
   disk-hunter-firefox-kiosk:
-    build: ./workers/firefox-kiosk
+    build:
+      context: ./workers/firefox-kiosk
+      args:
+        DEBIAN_IMAGE: ${DEBIAN_125_SLIM_IMAGE:-debian:12.5-slim@sha256:67f3931ad8cb1967beec602d8c0506af1e37e8d73c2a0b38b181ec5d8560d395}
     image: disk-hunter-firefox-kiosk
     container_name: disk_hunter_firefox_kiosk
     restart: unless-stopped
     env_file: .env
-    # Xorg on a bare host virtual terminal needs direct device access and the
-    # ability to switch VTs (chvt). This service is privileged by explicit user
-    # request; privilege is scoped to this kiosk container only and no existing
-    # service is altered. See docs/firefox-kiosk.md for the justification.
+    # Xorg needs direct device access and VT switching (chvt).
+    # See docs/firefox-kiosk.md for details.
     privileged: true
     environment:
       - KIOSK_URL=${KIOSK_URL:-http://localhost}

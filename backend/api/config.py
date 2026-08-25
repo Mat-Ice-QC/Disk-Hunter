@@ -11,6 +11,8 @@ IMAGES_DIR = f"{DATA_DIR}/images"
 DRIVES_DIR = f"{IMAGES_DIR}/drives"
 LOGO_PATH = f"{IMAGES_DIR}/logo.png"
 ISO_DIR = f"{DATA_DIR}/isos"
+BRANDING_FILE = f"{DATA_DIR}/branding.json"
+APP_SETTINGS_FILE = f"{DATA_DIR}/app_settings.json"
 
 def _ensure_json_file(path):
     """Ensure a history file exists as a real file containing '[]'.
@@ -24,6 +26,16 @@ def _ensure_json_file(path):
     if not os.path.exists(path):
         with open(path, "w") as f:
             f.write("[]")
+
+
+def _ensure_json_object_file(path):
+    """Like _ensure_json_file but initializes with '{}' for object-style
+    settings files (branding, app_settings)."""
+    if os.path.isdir(path):
+        os.rmdir(path)
+    if not os.path.exists(path):
+        with open(path, "w") as f:
+            f.write("{}")
 
 
 def _ensure_regular_file(path):
@@ -42,4 +54,6 @@ def setup_directories():
     _ensure_json_file(SMARTCTL_HISTORY_FILE)
     _ensure_json_file(SPEEDTEST_HISTORY_FILE)
     _ensure_json_file(PARTITION_HISTORY_FILE)
+    _ensure_json_object_file(BRANDING_FILE)
+    _ensure_json_object_file(APP_SETTINGS_FILE)
     _ensure_regular_file(LOGO_PATH)

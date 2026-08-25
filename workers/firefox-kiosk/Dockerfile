@@ -1,17 +1,8 @@
 # Firefox kiosk container for Disk-Hunter.
-#
-# Purpose: launch a self-contained X server on the host's virtual terminal 2
-# (tty2) and run Firefox ESR in kiosk mode pointing at the Disk-Hunter web UI.
-# Intended for air-gapped deployments where no desktop environment is installed
-# on the host and a physical operator needs a local browser to drive Disk
-# Hunter directly from the console.
-#
-# Base image is pinned to a specific Debian 12.5 slim tag (released 2024-04-29,
-# well over the 7-day minimum). APT packages are pulled from the Debian
-# "bookworm" stable channel; exact per-package version pinning is tracked by
-# the open "Pin Package Versions" TODO in the project README and can be added
-# here once a frozen snapshot is chosen for the air-gapped build host.
-FROM debian:12.5-slim
+# Launches X on tty2 and runs Firefox ESR in kiosk mode at the Disk-Hunter UI.
+# For air-gapped deployments with no desktop environment.
+ARG DEBIAN_IMAGE=debian:12.5-slim@sha256:67f3931ad8cb1967beec602d8c0506af1e37e8d73c2a0b38b181ec5d8560d395
+FROM ${DEBIAN_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 

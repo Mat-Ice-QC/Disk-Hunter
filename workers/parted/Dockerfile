@@ -1,3 +1,15 @@
-FROM alpine:latest
-RUN apk add --no-cache parted e2fsprogs util-linux dosfstools
+ARG ALPINE_IMAGE=alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+FROM ${ALPINE_IMAGE}
+
+ARG PARTED_VERSION=3.6-r2
+ARG E2FSPROGS_VERSION=1.47.0-r5
+ARG UTIL_LINUX_VERSION=2.40.1-r1
+ARG DOSFSTOOLS_VERSION=4.2-r2
+
+RUN apk add --no-cache \
+      parted=${PARTED_VERSION} \
+      e2fsprogs=${E2FSPROGS_VERSION} \
+      util-linux=${UTIL_LINUX_VERSION} \
+      dosfstools=${DOSFSTOOLS_VERSION}
+
 ENTRYPOINT ["tail", "-f", "/dev/null"]

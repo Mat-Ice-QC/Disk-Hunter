@@ -2,6 +2,7 @@ let selectedDrives = {}; // drivePath -> selectedPartitionPath
 let availableDisksData = [];
 let testQueue = [];
 let isTesting = false;
+let unpartitionedDrives = []; // non-root drives lacking partitions (for mass-create)
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-start-speedtest').addEventListener('click', startSelectedTests);
@@ -9,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('create-partition-modal').classList.remove('active');
     });
     document.getElementById('btn-confirm-partition').addEventListener('click', createPartition);
+
+    const btnPrepareAll = document.getElementById('btn-prepare-all-partitions');
+    if (btnPrepareAll) btnPrepareAll.addEventListener('click', prepareAllPartitions);
 
     // Show/hide API Debug Console based on settings
     const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
@@ -115,8 +119,12 @@ function rebuildUI(disks, runningTests) {
     availContainer.innerHTML = '';
     activeContainer.innerHTML = '';
 
+    const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
+    disks = disks.filter(d => !(protectRoot && d.is_root));
+
     let activeCount = 0;
     let availableCount = 0;
+    unpartitionedDrives = [];
 
     disks.forEach(disk => {
         const diskSize = parseInt(disk.size);
@@ -175,6 +183,7 @@ function rebuildUI(disks, runningTests) {
                 let options = partitions.map(p => `<option value="${p.path}">${p.path} (${formatBytes(p.size)})</option>`).join('');
                 partitionUI = `<select class="partition-select" id="part-sel-${driveName}">${options}</select>`;
             } else {
+                if (!isReadOnly) unpartitionedDrives.push(disk.path);
                 partitionUI = `<button class="btn-action" style="width:100%; margin-top: 10px;" onclick="openCreatePartitionModal('${disk.path}', event)">No Partitions - Create One</button>`;
             }
 
@@ -240,8 +249,53 @@ function rebuildUI(disks, runningTests) {
     if (availableCount === 0 && activeCount === 0) {
         availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives.</p>';
     }
+
+    // Show the mass-create button only when there are unpartitioned drives
+    const btnPrepareAll = document.getElementById('btn-prepare-all-partitions');
+    if (btnPrepareAll) {
+        btnPrepareAll.style.display = unpartitionedDrives.length > 0 ? '' : 'none';
+        btnPrepareAll.textContent = `Create Partitions on ${unpartitionedDrives.length} Unpartitioned Drive${unpartitionedDrives.length === 1 ? '' : 's'}`;
+    }
+
     if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
+
+window.prepareAllPartitions = async function() {
+    if (unpartitionedDrives.length === 0) {
+        customAlert('No unpartitioned drives detected.', 'Nothing to do');
+        return;
+    }
+    const label = 'gpt';
+    const fsType = 'ext4';
+    const size = '100%';
+    customConfirm(
+        `This will DESTROY any existing data and create a fresh ${label.toUpperCase()} partition table ` +
+        `with a single ${fsType} partition (${size}) on each of the following ${unpartitionedDrives.length} drive(s):\n\n` +
+        unpartitionedDrives.join('\n') +
+        `\n\nThis cannot be undone. Continue?`,
+        async () => {
+            try {
+                const res = await fetch('/api/partitions/prepare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drives: unpartitionedDrives, label: label, fs_type: fsType, size: size })
+                });
+                const data = await res.json();
+                if (data.status === 'success' || data.status === 'partial') {
+                    const msg = `Prepared ${data.succeeded}/${data.total} drive(s).` +
+                        (data.failed ? ` ${data.failed} failed.` : '');
+                    customAlert(msg, data.status === 'success' ? 'Success' : 'Partial');
+                } else {
+                    customAlert('Error: ' + (data.message || 'Failed to prepare partitions.'), 'Error');
+                }
+            } catch (e) {
+                console.error('Prepare partitions error:', e);
+                customAlert('Network error while preparing partitions.', 'Error');
+            }
+        },
+        'Create Partitions (Destructive)'
+    );
+};
 
 let pendingPartitionDrive = null;
 window.openCreatePartitionModal = function(drivePath, event) {

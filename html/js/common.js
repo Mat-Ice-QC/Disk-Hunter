@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
             initGlobalTooltips();
             initGlobalConfirm();
             initLayoutToggle();
+            initPotatoToggle();
             
             const langSelect = document.getElementById('lang-select');
             if (langSelect) {
@@ -239,6 +240,7 @@ function setActiveSidebarLink() {
         'iso.html': 'nav-iso',
         'iso_history.html': 'nav-iso-history',
         'data-management.html': 'nav-data-management',
+        'temperature.html': 'nav-temperature',
         'settings.html': 'nav-settings'
     };
     
@@ -279,8 +281,47 @@ function updateSystemInfoUI(data) {
     const ipEl = document.getElementById('sys-ip');
 
     if(hostnameEl) hostnameEl.innerText = data.hostname || 'Unknown';
-    if(tempEl) tempEl.innerText = data.temperature !== 'N/A' ? data.temperature + '°C' : 'N/A';
     if(ipEl) ipEl.innerText = data.ip || 'Unknown';
+
+    // Temperature: render one pill per configured device. The legacy single
+    // #sys-temp span is preserved for the first reading; extra devices are
+    // injected as sibling pills inside the clickable temp container.
+    const tempContainer = document.getElementById('temp-pill-container');
+    const collectionEnabled = data.temperature_collection !== false;
+    const temps = Array.isArray(data.temperatures) ? data.temperatures : [];
+
+    if (tempEl) {
+        if (!collectionEnabled) {
+            tempEl.innerText = 'Disabled';
+        } else if (temps.length === 0) {
+            tempEl.innerText = 'N/A';
+        } else {
+            const first = temps[0];
+            tempEl.innerText = (first.temp !== null && first.temp !== undefined) ? (first.temp + '°C') : 'N/A';
+            // Keep the label showing the friendly device name when multiple sensors exist
+            if (temps.length > 1) {
+                tempEl.innerText = `${first.name}: ${first.temp}°C`;
+            }
+        }
+    }
+
+    // Inject additional temp pills for any extra configured devices
+    if (tempContainer) {
+        // Remove previously injected extra pills (they are siblings of the link)
+        const parent = tempContainer.parentNode;
+        if (parent) parent.querySelectorAll('.extra-temp-pill').forEach(el => el.remove());
+        if (collectionEnabled && temps.length > 1) {
+            temps.slice(1).forEach(t => {
+                const pill = document.createElement('span');
+                pill.className = 'info-pill extra-temp-pill';
+                pill.style.marginLeft = '6px';
+                pill.innerText = (t.temp !== null && t.temp !== undefined)
+                    ? `${t.name}: ${t.temp}°C`
+                    : `${t.name}: N/A`;
+                parent.insertBefore(pill, tempContainer.nextSibling);
+            });
+        }
+    }
 }
 
 function processWebSocketData(data) {
@@ -810,6 +851,24 @@ window.translate = function(key, defaultVal) {
     }
     return defaultVal;
 };
+
+function initPotatoToggle() {
+    const btn = document.getElementById('btn-potato-toggle');
+    if (!btn) return;
+    const textEl = document.getElementById('potato-toggle-text');
+    const sync = () => {
+        const on = document.body.classList.contains('potato-mode');
+        if (textEl) textEl.innerText = on ? 'Potato: ON' : 'Potato Mode';
+        btn.classList.toggle('active', on);
+    };
+    sync();
+    btn.addEventListener('click', () => {
+        const on = !document.body.classList.contains('potato-mode');
+        document.body.classList.toggle('potato-mode', on);
+        localStorage.setItem('potatoMode', on ? 'true' : 'false');
+        sync();
+    });
+}
 
 function initLayoutToggle() {
     const btn = document.getElementById('btn-layout-toggle');

@@ -121,6 +121,57 @@ def resolve_physical_disk(dev_path: str) -> str | None:
         
     return real_path
 
+def validate_drive_path(drive_path: str) -> tuple[bool, str]:
+    """Validates that a drive path is safe for destructive operations.
+
+    Performs three checks:
+    1. Path matches /dev/<name> with safe characters only (regex).
+    2. Drive exists in the live lsblk inventory.
+    3. Drive is not the root/OS disk.
+
+    Returns (True, "") if valid, or (False, error_message) if invalid.
+    """
+    if not re.match(r"^/dev/[a-zA-Z0-9_-]+$", drive_path):
+        return (False, f"Invalid device path format: {drive_path}")
+
+    try:
+        lsblk_res = subprocess.run(
+            ["lsblk", "-n", "-o", "NAME"],
+            capture_output=True, text=True
+        )
+        if lsblk_res.returncode == 0 and lsblk_res.stdout.strip():
+            valid_names = set(lsblk_res.stdout.strip().split('\n'))
+            drive_name = drive_path.split('/')[-1]
+            if drive_name not in valid_names:
+                return (False, f"Drive {drive_path} not found in system inventory")
+    except Exception:
+        pass
+
+    root_disk = get_root_disk()
+    target_disk = resolve_physical_disk(drive_path)
+    if root_disk and target_disk and root_disk == target_disk:
+        return (False, f"Cannot operate on root/OS disk {root_disk}")
+
+    return (True, "")
+
+def get_root_disk() -> str | None:
+    """Return the physical disk path (e.g. /dev/sda) that hosts the Disk
+    Hunter data directory, or None if it cannot be determined.
+    """
+    try:
+        for probe in ("/app/data", "/etc/resolv.conf"):
+            df_res = subprocess.run(["df", probe, "--output=source"], capture_output=True, text=True)
+            lines = df_res.stdout.strip().split('\n')
+            if len(lines) > 1:
+                dev_path = lines[1].strip()
+                if dev_path and dev_path != "overlay":
+                    resolved = resolve_physical_disk(dev_path)
+                    if resolved and resolved != "overlay":
+                        return resolved
+    except Exception:
+        pass
+    return None
+
 @router.get("/api/disks")
 async def get_disks(exclude_root: bool = False):
     """
@@ -137,23 +188,7 @@ async def get_disks(exclude_root: bool = False):
         
         root_drive = None
         try:
-            # Heuristic 1: Find the underlying device for /app/data which is mounted from the host OS
-            df_res = subprocess.run(["df", "/app/data", "--output=source"], capture_output=True, text=True)
-            lines = df_res.stdout.strip().split('\n')
-            if len(lines) > 1:
-                dev_path = lines[1].strip()
-                if dev_path and dev_path != "overlay":
-                    root_drive = resolve_physical_disk(dev_path)
-            
-            # Heuristic 2: If the first check fails (e.g., using overlayfs), try finding the mount for /etc/resolv.conf
-            if not root_drive or root_drive == "overlay":
-                df_res = subprocess.run(["df", "/etc/resolv.conf", "--output=source"], capture_output=True, text=True)
-                lines = df_res.stdout.strip().split('\n')
-                if len(lines) > 1:
-                    dev_path = lines[1].strip()
-                    if dev_path and dev_path != "overlay":
-                        root_drive = resolve_physical_disk(dev_path)
-
+            root_drive = get_root_disk()
         except Exception:
             pass
 

@@ -1,6 +1,54 @@
 /* html/css/shredding.css */
 
 /* --- Modal Overrides --- */
+.shred-confirm-modal { max-width: 1100px !important; max-height: 92vh !important; }
+.shred-confirm-modal .modal-drives { max-height: 55vh; }
+
+.modal-view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 25px 0;
+}
+.modal-drive-count {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-red);
+}
+.modal-view-btn {
+    padding: 5px 14px;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.modal-view-btn:hover { color: var(--text-main); border-color: rgba(255,255,255,0.3); }
+.modal-view-btn.active { color: white; background: rgba(59, 130, 246, 0.2); border-color: var(--primary); }
+
+.modal-drive-simple {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.modal-drive-simple-item {
+    display: grid;
+    grid-template-columns: 120px 1fr 140px 80px;
+    gap: 12px;
+    align-items: center;
+    padding: 7px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.modal-drive-simple-item:last-child { border-bottom: none; }
+.modal-drive-simple-path { color: var(--accent-red); font-weight: 600; font-family: monospace; }
+.modal-drive-simple-model { color: var(--text-main); }
+.modal-drive-simple-serial { color: var(--text-muted); font-family: monospace; font-size: 12px; }
+.modal-drive-simple-size { color: var(--text-muted); text-align: right; }
+
 .modal-header { color: var(--accent-red); font-weight: bold; }
 .modal-drives { max-height: 300px; overflow-y: auto; margin: 15px 0; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
 .modal-drive-item { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; }
@@ -62,6 +110,48 @@
 .shred-label { display: block; color: var(--text-muted); margin-bottom: 8px; }
 .shred-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; margin-bottom: 20px; outline: none; }
 .shred-select:focus { border-color: var(--primary); }
+
+/* --- Wipe Method Radio List --- */
+.wipe-method-list {
+    max-height: 220px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.5);
+    padding: 4px;
+}
+.wipe-method-list::-webkit-scrollbar { width: 6px; }
+.wipe-method-list::-webkit-scrollbar-track { background: transparent; }
+.wipe-method-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+.wipe-method-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+    color: var(--text-main);
+}
+.wipe-method-item:hover { background: rgba(255,255,255,0.05); }
+.wipe-method-item.selected { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
+.wipe-method-item input[type="radio"] {
+    accent-color: var(--primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.wipe-method-section-label {
+    padding: 6px 12px 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    opacity: 0.6;
+}
 
 /* --- Buttons --- */
 .btn-shred { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent-red), #b91c1c); color: white; border: none; border-radius: var(--radius-input); font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }

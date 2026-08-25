@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" width="device-width, initial-scale=1.0">
+    <title>Disk Hunter | Temperature Sensors</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/history.css">
+    <link rel="stylesheet" href="css/settings.css">
+    <style>
+        .thermal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+        .thermal-card { background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border-color, rgba(255,255,255,0.08)); border-radius: 12px; padding: 16px; }
+        .thermal-card .zone-id { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+        .thermal-card .zone-name { font-size: 15px; font-weight: bold; color: var(--text-main); margin: 4px 0; word-break: break-word; }
+        .thermal-card .zone-temp { font-size: 28px; font-weight: bold; color: var(--accent-blue); }
+        .thermal-card .zone-temp.hot { color: var(--accent-red); }
+        .thermal-card .zone-temp.warn { color: #f59e0b; }
+        .thermal-card .zone-temp.na { color: var(--text-muted); font-size: 20px; }
+        .thermal-note { color: var(--text-muted); font-size: 13px; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="card">
+                <div class="history-header">
+                    <div>
+                        <h2 class="history-title">Temperature Sensors</h2>
+                        <p class="history-subtitle">All available thermal devices on this Disk Hunter machine and their friendly names. Configure which ones appear in the header from <a href="settings.html">Settings</a>.</p>
+                    </div>
+                    <div>
+                        <button id="btn-refresh-thermal" class="btn-action">Refresh</button>
+                        <a href="settings.html" class="btn-action">Configure</a>
+                    </div>
+                </div>
+                <p class="thermal-note">Auto-refreshing every 3 seconds.</p>
+                <div id="thermal-grid" class="thermal-grid">
+                    <p style="color: var(--text-muted);">Loading sensors...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/temperature.js"></script>
+</body>
+</html>

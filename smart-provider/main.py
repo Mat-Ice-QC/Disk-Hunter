@@ -6,7 +6,6 @@ app = FastAPI()
 
 @app.get("/smartdata/{device_name}")
 async def get_smart_data(device_name: str):
-    # Basic security check to prevent path traversal and ensure it's a /dev device
     if '..' in device_name or '/' in device_name:
         raise HTTPException(status_code=400, detail="Invalid device name format.")
     

@@ -7,6 +7,7 @@ import httpx
 import re
 from typing import List, Dict
 from .config import ISO_DIR
+from .disks import validate_drive_path
 from .history import append_iso_history
 from .system import get_local_time, get_client_ip
 
@@ -202,7 +203,13 @@ def start_write(req: WriteRequest, background_tasks: BackgroundTasks, http_reque
     if not re.match(r"^[a-zA-Z0-9_-]+$", req.device):
         debug_logs.append(f"Error: Invalid device name format: {req.device}")
         raise HTTPException(status_code=400, detail="Invalid device name format.")
-        
+
+    dev_path = f"/dev/{req.device}"
+    valid, err_msg = validate_drive_path(dev_path)
+    if not valid:
+        debug_logs.append(f"Rejected device {req.device}: {err_msg}")
+        raise HTTPException(status_code=400, detail=err_msg)
+
     write_tasks[task_id] = {
         "status": "pending",
         "filename": safe_filename,
