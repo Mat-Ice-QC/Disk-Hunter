@@ -1,11 +1,10 @@
 # Disk Hunter
 
-> **An all-in-one, web utility designed for testing, managing, wiping, and formatting physical storage drives.**
+> **An all-in-one web utility for testing, managing, wiping, and formatting physical storage drives.**
 
-Disk Hunter provides a sleek, modern glassmorphic dashboard interface for administrative disk operations. It leverages a high-performance Python FastAPI backend, isolating root-level, privileged commands inside ephemeral Docker containers to safeguard host system integrity.
+Disk Hunter provides a glassmorphic dashboard for administrative disk operations. A Python FastAPI backend orchestrates root-level commands inside ephemeral privileged Docker containers, keeping the host system isolated from destructive operations.
 
 ---
-
 
 <div align="center">
   <table>
@@ -40,80 +39,133 @@ Disk Hunter provides a sleek, modern glassmorphic dashboard interface for admini
 
 ## Key Features
 
-- **Interactive Dashboard:** Instantly view connected drives, partition structures, device health, and raw hardware specs in a unified grid.
-- **Secure Wiping (Shredder):** Erase disk data using industry-standard wiping methods (via `nwipe` and `hdparm`). Streams real-time terminal output to the browser and automatically generates a PDF **Certificate of Erasure** upon completion.
-- **Speed Benchmarks:** Run sequential read/write speed tests (using `fio` benchmarks) directly from the UI.
-- **S.M.A.R.T. Diagnostics:** Run and monitor short/extended self-tests, check real-time progress metrics, and view structured attribute health tables.
-- **Visual Partition Editor:** Create, delete, and format partitions (ext3, ext4, fat32, ntfs) with an intuitive click-and-drag block interface powered by `parted`.
-- **OS Image Flashing:** Safely write downloaded `.iso` or `.img` OS installations directly to targeted devices.
-- **Onboard Help Center:** Access dynamic, modular on-site guides rendered from Markdown with localized translations and interactive callouts.
-- **Unified Glassmorphic UI:** Enjoy a consistent, responsive dark mode design utilizing custom alert and confirmation modal overrides instead of default browser dialogs.
+- **Interactive Dashboard** — View connected drives, partition structures, device health, and hardware specs in a unified grid. List and squares layouts with drive image lightbox.
+- **Secure Wiping** — Erase drives via `nwipe` (DoD 5220.22-M, Gutmann, PRNG, zero fill), `hdparm` ATA Secure Erase (standard + enhanced), or `nvme-cli` NVMe format (crypto + user-data erase). Real-time log streaming and automatic PDF Certificate of Erasure generation.
+- **ATA Frozen Drive Handling** — Multi-method unfreeze (ATA sleep/wake, SATA link-power cycle, SCSI device-state reset) with automatic fallback to block-level zero overwrite (NIST SP 800-88 Clear) when the drive stays frozen.
+- **Speed Benchmarks** — Sequential read/write `fio` benchmarks directly from the UI with history tracking.
+- **S.M.A.R.T. Diagnostics** — Run short/extended self-tests, monitor real-time progress, and view structured attribute health tables.
+- **Visual Partition Editor** — Create, delete, and format partitions (ext3, ext4, fat32, ntfs) with batch operations and a partition graphic.
+- **OS Image Flashing** — Download and write `.iso` / `.img` files to targeted devices.
+- **Temperature Monitoring** — Multi-sensor thermal page with configurable thresholds, colour-coded readings, and server-side settings.
+- **Air-Gapped Kiosk Mode** — Optional Firefox ESR kiosk container for bare-metal deployments with no desktop environment.
+- **Onboard Help Center** — Modular Markdown guides with localized translations.
+- **Glassmorphic UI** — Consistent dark mode design with custom modals, responsive layout, and a Potato Mode toggle for low-end hardware.
 
 ---
 
 ## System Architecture
 
-Disk Hunter is built with a decoupled microservice layout to ensure **Worker Isolation** and **Concurrency Safety**:
-
 ```mermaid
 graph TD
-    UI[nginx:alpine - Frontend UI] -->|polls status & invokes API| API[Python FastAPI - Main API]
-    API -->|executes smartctl as non-root proxy| SP[Python FastAPI - SMART Provider Microservice]
-    API -->|spawns worker containers| Workers[Ephemeral Worker Containers /workers/*]
+    UI[nginx - Frontend UI] -->|HTTP / WebSocket| API[FastAPI - Main API]
+    API -->|smartctl proxy| SP[FastAPI - SMART Provider]
+    API -->|spawns ephemeral containers| Workers[Worker Containers]
     
-    SP -->|runs privileged command| SMART[smartctl - /dev/*]
-    Workers -->|runs privileged utility| DISK[nvme-cli, nwipe, hdparm, parted, dd, fio]
+    SP -->|privileged| SMART[smartctl - /dev/*]
+    Workers -->|privileged| DISK[nvme-cli, nwipe, hdparm, parted, dd, fio]
 ```
 
-1. **Frontend (`disk-hunter-ui`):** A responsive, glassmorphic UI built in vanilla HTML, CSS (no Tailwind), and JavaScript, served via Nginx.
-2. **Main API (`disk-hunter-api`):** The orchestration hub. Spawns, monitors, and terminates ephemeral Docker worker containers via async subprocess calls.
-3. **SMART Provider (`disk-hunter-smart-provider`):** A lightweight FastAPI microservice running in privileged mode. Acts as a secure proxy to query disk S.M.A.R.T data without elevating the main API's privileges.
-4. **Task Workers (`/workers/`):** Ephemeral containers build contexts containing single-purpose utilities (`nwipe`, `smartctl`, `parted`, `fio`, `dd`, etc.).
+| Component | Container | Role |
+|-----------|-----------|------|
+| **Frontend** | `disk-hunter-ui` | Vanilla HTML/CSS/JS served by nginx |
+| **Main API** | `disk-hunter-api` | FastAPI orchestrator — spawns, monitors, and terminates worker containers via Docker |
+| **SMART Provider** | `disk-hunter-smart-provider` | Privileged FastAPI microservice — proxy for `smartctl` queries |
+| **Workers** | `disk-hunter-*` | Ephemeral single-purpose containers (`nwipe`, `hdparm`, `nvme-cli`, `parted`, `smartctl`, `fio`) |
+
+All base images are digest-pinned and all packages are version-locked to prevent supply chain attacks.
 
 ---
 
-## Restructured Directory Layout
+## Directory Layout
 
 ```
 .
-├── backend/                   # Main FastAPI orchestrator application
+├── backend/                   # FastAPI orchestrator
 │   ├── api/                   # Router modules (disks, shredding, history, partition, etc.)
-│   └── Dockerfile             # Main API container definition
-├── html/                      # Frontend web files served by Nginx
-│   ├── css/                   # Global and page-specific stylesheets (glassmorphism theme)
-│   ├── js/                    # Dashboards, modals, and common web helpers
-│   └── components/            # Reusable header, footer, and sidebar fragments
-├── smart-provider/            # Dedicated SMART data microservice
-├── workers/                   # Ephemeral task containers (restructured)
-│   ├── hdparm/                # ATA secure erase tools
-│   ├── nvme/                  # NVMe utilities
-│   ├── nwipe/                 # DBAN-based disk eraser container
-│   ├── parted/                # Disk partition manager
-│   ├── smartctl-test/         # S.M.A.R.T diagnostics runner
-│   └── speedtest-worker/      # fio speed benchmarking tool
-├── data/                      # Persistent runtime logs, PDFs, caches (Git ignored)
-├── docker-compose.yml         # Container deployment configuration
-└── nginx-entrypoint.sh        # Startup script to dynamically configure SSL/HTTPS and routing
+│   └── Dockerfile
+├── html/                      # Frontend served by nginx
+│   ├── css/                   # Glassmorphism theme stylesheets
+│   ├── js/                    # Page logic and shared helpers
+│   ├── components/            # Header, footer, sidebar fragments
+│   └── docs/                  # On-site help center Markdown
+├── smart-provider/            # SMART data microservice
+├── workers/                   # Ephemeral task containers
+│   ├── hdparm/                # ATA secure erase
+│   ├── nvme/                  # NVMe format / crypto erase
+│   ├── nwipe/                 # DBAN-based multi-pass eraser
+│   ├── parted/                # Partition management
+│   ├── smartctl-test/         # SMART self-test runner
+│   ├── speedtest-worker/      # fio benchmark runner
+│   └── firefox-kiosk/         # Air-gapped kiosk mode (compose profile)
+├── data/                      # Runtime logs, PDFs, caches (gitignored)
+├── docker-compose.yml
+├── .env.example               # Configuration template
+└── nginx-entrypoint.sh        # SSL / routing startup script
 ```
 
 ---
 
-## Configuration (`.env`)
+## Quick Start
 
-Disk Hunter uses environment variables to manage access permissions, data paths, and feature toggles:
+### Prerequisites
+
+- Linux host with Docker and Docker Compose
+- Physical drive access (`/dev`, `/sys`, `/run/udev` are bind-mounted)
+- Root or sudo access for Docker
+
+### Deploy
+
+```bash
+git clone <repo-url> Disk-Hunter
+cd Disk-Hunter
+cp .env.example .env   # Edit if needed
+docker compose up -d --build
+```
+
+The dashboard is available at `http://localhost` (or the host's IP on port 80/443 if HTTPS is configured).
+
+---
+
+## Configuration
+
+All configuration is via `.env` (copy from `.env.example`). Docker Compose reads it automatically.
+
+### Feature Toggles
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ALLOWED_IPS` | Comma-separated list of allowed client IP addresses (or `*` for any) | `*` |
-| `ENABLE_SHREDDER` | Enables/Disables disk shredding features | `true` |
-| `ENABLE_SPEEDTEST` | Enables/Disables sequential read/write speed benchmarking | `true` |
-| `ENABLE_ISOWRITER` | Enables/Disables ISO downloading and flashing | `true` |
-| `ENABLE_SMARTCTL` | Enables/Disables S.M.A.R.T self-testing and analytics | `true` |
-| `ENABLE_DATA_MANAGEMENT` | Enables/Disables internal PDF/ISO data browsing | `true` |
-| `ENABLE_DELETE_HISTORY` | Hides log deletion buttons when `false` for immutable audits | `false` |
-| `DATA_DIR` | Absolute path on host to store logs, PDFs, and metadata | `./data` |
+| `ALLOWED_IPS` | Comma-separated allowed client IPs, or `*` for any | `*` |
+| `ENABLE_SHREDDER` | Disk shredding (nwipe, hdparm, nvme) | `true` |
+| `ENABLE_SPEEDTEST` | fio speed benchmarks | `true` |
+| `ENABLE_ISOWRITER` | ISO download and flashing | `true` |
+| `ENABLE_SMARTCTL` | SMART self-testing and analytics | `true` |
+| `ENABLE_DATA_MANAGEMENT` | PDF/ISO/data file browsing | `true` |
+| `ENABLE_NETWORK_SHARE` | Network share module (frontend toggle) | `true` |
+| `ENABLE_DELETE_HISTORY` | Allow log/history deletion; `false` for immutable audits | `true` |
+| `DATA_DIR` | Host path for logs, PDFs, and metadata | `./data` |
 
-To apply configuration changes, restart the services:
+### HTTPS
+
+Set `HTTPS_CERT_PATH` and `HTTPS_KEY_PATH` to your SSL certificate and key. nginx handles TLS automatically.
+
+### ATA Secure Erase
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FROZEN_FALLBACK_WIPE` | `1` = fall back to block-level zero overwrite if drive stays frozen; `0` = hard-fail | `1` |
+
+### Kiosk Mode
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KIOSK_URL` | URL for the Firefox kiosk to open | `http://localhost` |
+
+### Server-Side Settings
+
+Branding (company name, address, phone, datacenter tags), temperature sensor selection, and temperature collection are persisted in `data/branding.json` and `data/app_settings.json` on the Disk Hunter machine, shared across all clients.
+
+### Applying Changes
+
 ```bash
 docker compose down
 docker compose up -d --build --force-recreate
@@ -121,27 +173,42 @@ docker compose up -d --build --force-recreate
 
 ---
 
-## Quick Start
+## Air-Gapped Kiosk Mode
 
-1. Clone this repository.
+For bare, air-gapped Linux hosts with no desktop environment, an optional Firefox kiosk container launches a self-contained X server on the host's **tty2** and opens Firefox ESR in fullscreen kiosk mode at the Disk Hunter UI.
 
-2. Boot the environment using Docker Compose:
-   ```bash
-   docker compose up -d --build
-   ```
-3. Access the web dashboard at `http://localhost` (or the configured IP : HTTPS port).
+```bash
+docker compose --profile kiosk up -d --build
+```
+
+Switch to tty2 with `Ctrl+Alt+F2` (or the container runs `chvt 2` automatically). See [`docs/firefox-kiosk.md`](../docs/firefox-kiosk.md) for details.
 
 ---
 
-## TODO / Future Features
+## Supply Chain Security
 
-- **Active Directory / LDAP Integration:** Corporate user authentication and role-based access control (RBAC).
-- **Native NVMe Secure Erase Support:** Expand nvme-cli worker support to trigger hardware block formatting.
-- **Automated Report Emailing:** SMTP mailing service to dispatch PDF erasure certificates automatically.
-- **Bulk Firmware Updates:** Automate deploying vendor-specific firmware images across uniform drive batches.
-- **Disk Overview:** Fix the fetching of smartdata always being called every refresh.
-- **Network Share / Disk Browsing:** Establish a dedicated module for network drive browsing.
-- **Drive Images Fix:** Add default images for nvme, usb, ssd, hdd, sd, etc.
-- **Security:** Conduct a comprehensive audit of the entire codebase.
-- **Pin Package Versions:** Lock all Python modules and APT package versions to reduce the risk and impact of vulnerabilities introduced in newer package releases.
-- **Partition Editor UI:** Remake the partition editor UI for an improved aesthetic layout.
+All Docker base images are pinned by SHA256 digest and all APK/pip packages are locked to exact versions. Floating tags can be repointed upstream to a compromised or broken image without notice — digest pinning eliminates that risk. Version lock variables are defined in `.env.example` and passed as build args to every Dockerfile.
+
+---
+
+## TODO
+
+- Active Directory / LDAP integration with role-based access control
+- Automated SMTP emailing of PDF erasure certificates
+- Bulk firmware updates across uniform drive batches
+- Network share / disk browsing module
+- Default drive images for nvme / usb / ssd / hdd / sd
+- Debian APT package pinning (backend, smart-provider, nwipe, firefox-kiosk)
+- Authentication on API endpoints
+
+---
+
+## Recent Updates
+
+- Fixed the ATA frozen drive issue by adding multi-method unfreezing and a fallback to block-level zero wipe
+- Fixed the "Select All" bug in shredding so it actually populates the selected drives list now
+- Added NVMe secure erase with a fallback to user-data erase
+- Huge security hardening pass: added server-side drive validation, path traversal fixes, command injection guards, and better root-disk protection
+- Added a new multi-sensor temperature monitoring page with server-side config
+- Pinned supply chain dependencies and consolidated the versions file into .env
+- Assorted other changes from before like the partition editor redesign, kiosk mode, and websocket optimizations

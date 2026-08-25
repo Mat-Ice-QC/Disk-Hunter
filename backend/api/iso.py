@@ -7,8 +7,9 @@ import httpx
 import re
 from typing import List, Dict
 from .config import ISO_DIR
+from .disks import validate_drive_path
 from .history import append_iso_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 
 router = APIRouter(prefix="/api/iso", tags=["iso"])
 
@@ -77,7 +78,7 @@ def start_download(req: DownloadRequest, background_tasks: BackgroundTasks, http
     debug_logs = []
     task_id = str(uuid.uuid4())
     safe_filename = os.path.basename(req.filename)
-    ip = http_request.client.host if http_request.client else "Unknown"
+    ip = get_client_ip(http_request)
     debug_logs.append(f"Received DownloadRequest payload from {ip}: url={req.url}, filename={safe_filename}")
 
     if not safe_filename or safe_filename in [".", ".."]:
@@ -189,7 +190,7 @@ def start_write(req: WriteRequest, background_tasks: BackgroundTasks, http_reque
         dict: A status dictionary containing the task ID and debug logs.
     """
     debug_logs = []
-    ip = http_request.client.host if http_request.client else "Unknown"
+    ip = get_client_ip(http_request)
     task_id = str(uuid.uuid4())
     safe_filename = os.path.basename(req.filename)
     filepath = os.path.join(ISO_DIR, safe_filename)
@@ -202,7 +203,13 @@ def start_write(req: WriteRequest, background_tasks: BackgroundTasks, http_reque
     if not re.match(r"^[a-zA-Z0-9_-]+$", req.device):
         debug_logs.append(f"Error: Invalid device name format: {req.device}")
         raise HTTPException(status_code=400, detail="Invalid device name format.")
-        
+
+    dev_path = f"/dev/{req.device}"
+    valid, err_msg = validate_drive_path(dev_path)
+    if not valid:
+        debug_logs.append(f"Rejected device {req.device}: {err_msg}")
+        raise HTTPException(status_code=400, detail=err_msg)
+
     write_tasks[task_id] = {
         "status": "pending",
         "filename": safe_filename,

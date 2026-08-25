@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // --- Settings Toggles & Initializers ---
     const pdfToggle = document.getElementById('pdf-report-toggle');
     const debugToggle = document.getElementById('debug-mode-toggle');
@@ -120,19 +120,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Branding Logic ---
+    // --- Branding Logic (server-side persistence + localStorage cache) ---
     const iName = document.getElementById('comp-name');
     const iAddr = document.getElementById('comp-addr');
     const iPhone = document.getElementById('comp-phone');
 
-    iName.value = localStorage.getItem('dh_comp_name') || '';
-    iAddr.value = localStorage.getItem('dh_comp_addr') || '';
-    iPhone.value = localStorage.getItem('dh_comp_phone') || '';
+    // Load branding from the server (source of truth) and cache locally.
+    let dcTags = ['DatacenterX', 'DatacenterY'];
+    try {
+        const res = await fetch('/api/settings/branding');
+        const data = await res.json();
+        if (data.status === 'success' && data.branding) {
+            const b = data.branding;
+            iName.value = b.company_name || '';
+            iAddr.value = b.company_address || '';
+            iPhone.value = b.company_phone || '';
+            dcTags = Array.isArray(b.dc_tags) && b.dc_tags.length ? b.dc_tags : ['DatacenterX', 'DatacenterY'];
+            // cache to localStorage so other pages (e.g. shredding) read the same values offline
+            localStorage.setItem('dh_comp_name', b.company_name || '');
+            localStorage.setItem('dh_comp_addr', b.company_address || '');
+            localStorage.setItem('dh_comp_phone', b.company_phone || '');
+            localStorage.setItem('dh_dc_tags', JSON.stringify(dcTags));
+        } else {
+            iName.value = localStorage.getItem('dh_comp_name') || '';
+            iAddr.value = localStorage.getItem('dh_comp_addr') || '';
+            iPhone.value = localStorage.getItem('dh_comp_phone') || '';
+            dcTags = JSON.parse(localStorage.getItem('dh_dc_tags')) || ['DatacenterX', 'DatacenterY'];
+        }
+    } catch (e) {
+        iName.value = localStorage.getItem('dh_comp_name') || '';
+        iAddr.value = localStorage.getItem('dh_comp_addr') || '';
+        iPhone.value = localStorage.getItem('dh_comp_phone') || '';
+        dcTags = JSON.parse(localStorage.getItem('dh_dc_tags')) || ['DatacenterX', 'DatacenterY'];
+    }
+
+    async function saveBrandingToServer() {
+        try {
+            await fetch('/api/settings/branding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    company_name: iName.value,
+                    company_address: iAddr.value,
+                    company_phone: iPhone.value,
+                    dc_tags: dcTags
+                })
+            });
+        } catch (e) {
+            console.error('Failed to sync branding to server:', e);
+        }
+    }
 
     document.getElementById('btn-save-branding').addEventListener('click', (e) => {
         localStorage.setItem('dh_comp_name', iName.value);
         localStorage.setItem('dh_comp_addr', iAddr.value);
         localStorage.setItem('dh_comp_phone', iPhone.value);
+        saveBrandingToServer();
         e.target.innerText = "Saved!";
         setTimeout(() => e.target.innerText = "Save Text Details", 2000);
     });
@@ -164,16 +207,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Datacenter Tags Logic ---
-    let dcTags = JSON.parse(localStorage.getItem('dh_dc_tags')) || ['DatacenterX', 'DatacenterY'];
     const tagContainer = document.getElementById('tag-container');
     const tagInput = document.getElementById('new-tag-input');
 
     function renderTags() {
         tagContainer.innerHTML = '';
         localStorage.setItem('dh_dc_tags', JSON.stringify(dcTags));
+        saveBrandingToServer();
         dcTags.forEach(tag => {
             const pill = document.createElement('span');
-            pill.style.cssText = "background: #334155; padding: 6px 12px; border-radius: 20px; font-size: 13px; display: flex; align-items: center; gap: 8px;";
             pill.innerHTML = `${tag} <span style="color: var(--accent-red); cursor: pointer; font-weight: bold;" onclick="removeTag('${tag}')">×</span>`;
             tagContainer.appendChild(pill);
         });
@@ -194,25 +236,74 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     renderTags();
 
+    // --- Temperature Monitoring Settings ---
+    const thermalList = document.getElementById('thermal-device-list');
+    const collectToggle = document.getElementById('collect-temperature-toggle');
+    const btnSaveTemp = document.getElementById('btn-save-temperature');
+    const tempStatus = document.getElementById('temperature-status');
+    let thermalConfigLoaded = false;
+
+    async function loadTemperatureConfig() {
+        if (!thermalList || !collectToggle) return;
+        try {
+            const res = await fetch('/api/settings/temperature');
+            const data = await res.json();
+            if (data.status !== 'success') return;
+            const cfg = data.config || {};
+            const available = data.available || [];
+            collectToggle.checked = cfg.collect_temperature !== false;
+            const selected = Array.isArray(cfg.thermal_devices) ? cfg.thermal_devices : [];
+
+            if (available.length === 0) {
+                thermalList.innerHTML = '<p style="color:var(--text-muted); font-size:13px;">No thermal sensors detected on this machine.</p>';
+            } else {
+                thermalList.innerHTML = '';
+                available.forEach(zone => {
+                    const id = `thermal-${zone.id}`;
+                    const row = document.createElement('label');
+                    row.style.cssText = 'display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;';
+                    const checked = selected.includes(zone.id) ? 'checked' : '';
+                    row.innerHTML = `<input type="checkbox" id="${id}" class="setting-checkbox" value="${zone.id}" ${checked}> <span><strong>${zone.name}</strong> <code style="color:var(--text-muted);">${zone.id}</code> — <span style="color:var(--accent-blue);">${zone.temp !== null && zone.temp !== undefined ? zone.temp + '°C' : 'N/A'}</span></span>`;
+                    thermalList.appendChild(row);
+                });
+            }
+            thermalConfigLoaded = true;
+        } catch (e) {
+            console.error('Failed to load temperature config:', e);
+        }
+    }
+
+    if (btnSaveTemp) {
+        btnSaveTemp.addEventListener('click', async () => {
+            if (!thermalConfigLoaded) return;
+            const checked = Array.from(thermalList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+            const collect = collectToggle.checked;
+            btnSaveTemp.disabled = true;
+            btnSaveTemp.innerText = 'Saving...';
+            try {
+                const res = await fetch('/api/settings/temperature', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ collect_temperature: collect, thermal_devices: checked })
+                });
+                const data = await res.json();
+                tempStatus.innerHTML = `<span style="color: ${data.status === 'success' ? 'var(--accent-green)' : 'red'};">${data.message}</span>`;
+            } catch (e) {
+                tempStatus.innerHTML = `<span style="color: red;">Network error.</span>`;
+            } finally {
+                btnSaveTemp.disabled = false;
+                btnSaveTemp.innerText = 'Save Temperature Settings';
+            }
+        });
+    }
+    loadTemperatureConfig();
+
     // --- Drive Manager Modal Logic ---
     const btnOpenDriveManager = document.getElementById('btn-open-drive-manager');
     if (btnOpenDriveManager) {
         btnOpenDriveManager.addEventListener('click', openDriveManager);
     }
 });
-
-// Global card toggle
-window.toggleCard = function(headerElem) {
-    const icon = headerElem.querySelector('.minimize-icon');
-    const content = headerElem.nextElementSibling;
-    if (content.classList.contains('minimized')) {
-        content.classList.remove('minimized');
-        icon.classList.remove('minimized');
-    } else {
-        content.classList.add('minimized');
-        icon.classList.add('minimized');
-    }
-};
 
 let selectedPoolImage = null;
 
@@ -284,7 +375,10 @@ async function loadPoolImages() {
             return;
         }
 
+        const seen = new Set();
         data.images.forEach(filename => {
+            if (seen.has(filename)) return;
+            seen.add(filename);
             const wrapper = document.createElement('div');
             wrapper.className = 'pool-image-wrapper';
             wrapper.onclick = () => selectPoolImage(wrapper, filename);

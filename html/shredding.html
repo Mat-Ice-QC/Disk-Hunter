@@ -27,16 +27,7 @@
 
                     <div class="config-box">
                         <label class="shred-label"><span data-i18n="wipe_algorithm">Wipe Algorithm</span><span class="help-indicator" data-tooltip="<strong>Sanitization Standard</strong><br>Select from multiple standard shredding protocols including DoD 5220.22-M, Gutmann, or direct hardware Secure Erase.">?</span></label>
-                        <select id="wipe-method" class="shred-select">
-                            <option value="zero" data-i18n="method_zero">Fill With Zeros (1 Pass)</option>
-                            <option value="dodshort" data-i18n="method_dodshort" selected>DoD Short 5220.22-M (3 Passes)</option>
-                            <option value="dod522022m" data-i18n="method_dod522022m">DoD Full 5220.22-M (7 Passes)</option>
-                            <option value="gutmann" data-i18n="method_gutmann">Gutmann Wipe (35 Passes)</option>
-                            <option value="ops2" data-i18n="method_ops2">RCMP TSSIT OPS-II (7 Passes)</option>
-                            <option value="is5enh" data-i18n="method_is5enh">HMG IS5 Enhanced (3 Passes)</option>
-                            <option value="schneier" data-i18n="method_schneier">Schneier Wipe (7 Passes)</option>
-                            <option value="prng" data-i18n="method_prng">PRNG Stream (Random Pass)</option>
-                        </select>
+                        <div id="wipe-method-list" class="wipe-method-list"></div>
 
                         <div id="verification-wrapper">
                             <label class="shred-label"><span data-i18n="verification">Verification</span><span class="help-indicator" data-tooltip="<strong>Write Verification</strong><br>Determine whether to verify data blocks after wiping passes to confirm erasure.">?</span></label>
@@ -63,19 +54,19 @@
                         <p>Scanning hardware...</p>
                     </div>
 
-                    <div id="debug-console">
-                        <div class="debug-header">API DEBUG TERMINAL</div>
-                        <div id="debug-output">Awaiting execution...</div>
-                    </div>
-                    
                 </div>
             </div>
         </div>
 
         <div id="shred-modal" class="modal-overlay">
-            <div class="modal-box">
+            <div class="modal-box shred-confirm-modal">
                 <div class="modal-header" data-i18n="title_confirm_wipe">DANGER: Confirm Data Destruction</div>
                 <p style="padding: 10px 25px 0 25px;" data-i18n="confirm_wipe_desc">You are about to irreversibly destroy all data, partition tables, and file systems on the following drives:</p>
+                <div class="modal-view-toggle">
+                    <span class="modal-drive-count" id="modal-drive-count"></span>
+                    <button id="btn-view-detailed" class="modal-view-btn active" data-i18n="view_detailed">Detailed</button>
+                    <button id="btn-view-simple" class="modal-view-btn" data-i18n="view_simple">Simple List</button>
+                </div>
                 <div class="modal-drives" id="modal-drive-list"></div>
                 <p class="modal-text-muted" style="padding: 0 25px 15px 25px;">A dedicated, isolated Docker container will be spun up for each drive. This process cannot be paused or reversed once started.</p>
                 <div class="modal-actions">

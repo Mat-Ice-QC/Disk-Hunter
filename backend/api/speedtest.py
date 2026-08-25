@@ -8,8 +8,9 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Request
 from .models import SpeedtestRequest, StopRequest
 from .history import append_speedtest_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
+from .disks import get_root_disk, resolve_physical_disk
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/speedtest/logs/python"
@@ -156,7 +157,6 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
 
 @router.get("/api/speedtest/logs/{container_name}")
 def get_speedtest_logs(container_name: str):
-    # Strict validation of container name format to prevent path traversal or flag injection
     if not re.match(r"^disk_hunter_speedtest_[a-zA-Z0-9_.-]+$", container_name):
         return {"status": "error", "message": "Invalid container name format."}
 
@@ -193,7 +193,7 @@ def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks
     """
     debug_logs = []
     try:
-        ip = http_request.client.host if http_request.client else "Unknown"
+        ip = get_client_ip(http_request)
         debug_logs.append(f"Received SpeedtestRequest payload from {ip}: {request.dict()}")
         test_type = request.test_type
         start_time = get_local_time(request.timezone)
@@ -201,6 +201,16 @@ def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks
         for drive in request.drives:
             drive_sizes = ["1G", "10G", "100G"] if request.size == "all" else [request.size]
             debug_logs.append(f"Processing target partition: {drive}")
+
+            try:
+                root_disk = get_root_disk()
+                target_disk = resolve_physical_disk(drive)
+                if root_disk and target_disk and root_disk == target_disk:
+                    debug_logs.append(f"Rejected: {drive} belongs to the root/OS disk {root_disk} which is protected from speed testing.")
+                    logging.warning(f"Blocked speedtest on root disk {drive} (parent {root_disk}).")
+                    continue
+            except Exception as e:
+                debug_logs.append(f"Root-disk guard check raised: {e}")
 
             if request.size == "all":
                 try:

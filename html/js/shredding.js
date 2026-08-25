@@ -5,6 +5,7 @@ let availableDisksData = [];
 let refreshInterval;
 let previousDiskStateHash = ""; 
 let activeShredTab = 'standard';
+let selectedMethod = 'dodshort';
 
 document.addEventListener('dh-language-changed', () => {
     window.applyLocalization();
@@ -19,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-cancel').addEventListener('click', hideModal);
     document.getElementById('btn-confirm').addEventListener('click', executeWipe);
 
+    document.getElementById('btn-view-detailed').addEventListener('click', () => switchModalView('detailed'));
+    document.getElementById('btn-view-simple').addEventListener('click', () => switchModalView('simple'));
+
     // Tab switching event listeners
     const tabButtons = document.querySelectorAll('.shred-ui-tab');
     tabButtons.forEach(btn => {
@@ -28,6 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Clear previous selections to prevent mixing incompatible targets
             selectedDrives = [];
+            selectedMethod = targetTab === 'nvme' ? 'nvme-user' : 'dodshort';
+            const container = document.getElementById('wipe-method-list');
+            if (container) { container.dataset.hash = ''; }
             
             tabButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -52,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const debugConsole = document.getElementById('debug-console');
     if (debugConsole) {
         if (isDebug) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             const debugOutput = document.getElementById('debug-output');
             if (debugOutput) {
                 debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
@@ -86,38 +93,21 @@ function formatBytes(bytes, decimals = 1) {
 }
 
 function updateShredConfigUI() {
-    const select = document.getElementById('wipe-method');
+    const container = document.getElementById('wipe-method-list');
     const verifyWrapper = document.getElementById('verification-wrapper');
-    if (!select) return;
+    if (!container) return;
 
-    const prevVal = select.value;
-    select.innerHTML = '';
+    let availableMethods = [];
 
     if (activeShredTab === 'nvme') {
         if (verifyWrapper) verifyWrapper.style.display = 'none';
-
-        const optUser = document.createElement('option');
-        optUser.value = 'nvme-user';
-        optUser.setAttribute('data-i18n', 'method_nvme_user');
-        optUser.innerText = window.translate('method_nvme_user', 'NVMe Secure Erase (User Data Format)');
-        
-        const optCrypto = document.createElement('option');
-        optCrypto.value = 'nvme-crypto';
-        optCrypto.setAttribute('data-i18n', 'method_nvme_crypto');
-        optCrypto.innerText = window.translate('method_nvme_crypto', 'NVMe Secure Erase (Cryptographic Format)');
-
-        select.appendChild(optUser);
-        select.appendChild(optCrypto);
-
-        if (prevVal === 'nvme-user' || prevVal === 'nvme-crypto') {
-            select.value = prevVal;
-        } else {
-            select.value = 'nvme-user';
-        }
+        availableMethods = [
+            { val: 'nvme-user', i18n: 'method_nvme_user', label: 'NVMe Secure Erase (User Data Format)' },
+            { val: 'nvme-crypto', i18n: 'method_nvme_crypto', label: 'NVMe Secure Erase (Cryptographic Format)' }
+        ];
     } else {
         if (verifyWrapper) verifyWrapper.style.display = 'block';
-
-        const methods = [
+        availableMethods = [
             { val: 'zero', i18n: 'method_zero', label: 'Fill With Zeros (1 Pass)' },
             { val: 'dodshort', i18n: 'method_dodshort', label: 'DoD Short 5220.22-M (3 Passes)' },
             { val: 'dod522022m', i18n: 'method_dod522022m', label: 'DoD Full 5220.22-M (7 Passes)' },
@@ -128,15 +118,6 @@ function updateShredConfigUI() {
             { val: 'prng', i18n: 'method_prng', label: 'PRNG Stream (Random Pass)' }
         ];
 
-        methods.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.val;
-            opt.setAttribute('data-i18n', m.i18n);
-            opt.innerText = window.translate(m.i18n, m.label);
-            select.appendChild(opt);
-        });
-
-        // Add ATA Secure Erase dynamically if all selected are SATA/HDD
         const allSelectedAreSata = selectedDrives.length > 0 && selectedDrives.every(path => {
             const disk = availableDisksData.find(d => d.path === path);
             if (!disk) return false;
@@ -146,27 +127,47 @@ function updateShredConfigUI() {
         });
 
         if (allSelectedAreSata) {
-            const optAtaSec = document.createElement('option');
-            optAtaSec.value = 'ata-secure';
-            optAtaSec.setAttribute('data-i18n', 'method_ata_secure');
-            optAtaSec.innerText = window.translate('method_ata_secure', 'ATA Secure Erase (User Data Format)');
-            
-            const optAtaEnh = document.createElement('option');
-            optAtaEnh.value = 'ata-enhanced';
-            optAtaEnh.setAttribute('data-i18n', 'method_ata_enhanced');
-            optAtaEnh.innerText = window.translate('method_ata_enhanced', 'ATA Enhanced Secure Erase (Cryptographic Format)');
-            
-            select.appendChild(optAtaSec);
-            select.appendChild(optAtaEnh);
-        }
-
-        const allowedVals = methods.map(m => m.val).concat(allSelectedAreSata ? ['ata-secure', 'ata-enhanced'] : []);
-        if (allowedVals.includes(prevVal)) {
-            select.value = prevVal;
-        } else {
-            select.value = 'dodshort';
+            availableMethods.push(
+                { val: 'ata-secure', i18n: 'method_ata_secure', label: 'ATA Secure Erase (User Data Format)' },
+                { val: 'ata-enhanced', i18n: 'method_ata_enhanced', label: 'ATA Enhanced Secure Erase (Cryptographic Format)' }
+            );
         }
     }
+
+    const validVals = availableMethods.map(m => m.val);
+    if (!validVals.includes(selectedMethod)) {
+        selectedMethod = activeShredTab === 'nvme' ? 'nvme-user' : 'dodshort';
+    }
+
+    const currentHash = availableMethods.map(m => m.val).join(',');
+    if (container.dataset.hash === currentHash) return;
+    container.dataset.hash = currentHash;
+    container.innerHTML = '';
+
+    availableMethods.forEach(m => {
+        const label = document.createElement('label');
+        label.className = 'wipe-method-item' + (m.val === selectedMethod ? ' selected' : '');
+
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'wipe-method';
+        radio.value = m.val;
+        radio.checked = (m.val === selectedMethod);
+
+        radio.addEventListener('change', () => {
+            selectedMethod = m.val;
+            container.querySelectorAll('.wipe-method-item').forEach(el => el.classList.remove('selected'));
+            label.classList.add('selected');
+        });
+
+        const text = document.createElement('span');
+        text.setAttribute('data-i18n', m.i18n);
+        text.innerText = window.translate(m.i18n, m.label);
+
+        label.appendChild(radio);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
 }
 
 function updateShreddingUI() {
@@ -301,7 +302,18 @@ function rebuildUI(disks, wipingJobs) {
             
             headerArea.addEventListener('click', (e) => {
                 if (e.target !== checkbox) checkbox.checked = !checkbox.checked;
-                
+
+                if (checkbox.checked) {
+                    if (!selectedDrives.includes(disk.path)) selectedDrives.push(disk.path);
+                    card.classList.add('selected');
+                } else {
+                    selectedDrives = selectedDrives.filter(p => p !== disk.path);
+                    card.classList.remove('selected');
+                }
+                updateShredConfigUI();
+            });
+
+            checkbox.addEventListener('change', () => {
                 if (checkbox.checked) {
                     if (!selectedDrives.includes(disk.path)) selectedDrives.push(disk.path);
                     card.classList.add('selected');
@@ -348,65 +360,127 @@ window.stopWipeJob = async function(containerName) {
     }, confirmTitle);
 };
 
+let modalViewMode = 'detailed';
+
+function switchModalView(mode) {
+    modalViewMode = mode;
+    document.getElementById('btn-view-detailed').classList.toggle('active', mode === 'detailed');
+    document.getElementById('btn-view-simple').classList.toggle('active', mode === 'simple');
+    const list = document.getElementById('modal-drive-list');
+    if (mode === 'detailed') {
+        document.getElementById('modal-detailed-view').style.display = '';
+        const simple = document.getElementById('modal-simple-view');
+        if (simple) simple.style.display = 'none';
+    } else {
+        document.getElementById('modal-detailed-view').style.display = 'none';
+        let simple = document.getElementById('modal-simple-view');
+        if (!simple) {
+            simple = document.createElement('div');
+            simple.id = 'modal-simple-view';
+            simple.className = 'modal-drive-simple';
+            list.appendChild(simple);
+        }
+        simple.style.display = '';
+    }
+}
+
 function showConfirmationModal() {
     if (selectedDrives.length === 0) {
         customAlert("Please select at least one available drive to wipe.");
         return;
     }
     console.log("Showing confirmation modal. Selected drives:", selectedDrives);
-    const modalList = document.getElementById('modal-drive-list');
-    modalList.innerHTML = '';
 
     const generatePdf = localStorage.getItem('disk_hunter_pdf') === 'true';
     let dcTags = JSON.parse(localStorage.getItem('dh_dc_tags')) || ['DatacenterX'];
     let options = dcTags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
 
+    const countEl = document.getElementById('modal-drive-count');
+    if (countEl) countEl.innerText = `${selectedDrives.length} drive${selectedDrives.length > 1 ? 's' : ''} selected`;
+
+    const list = document.getElementById('modal-drive-list');
+    list.innerHTML = '';
+
+    const detailedView = document.createElement('div');
+    detailedView.id = 'modal-detailed-view';
+
+    const simpleView = document.createElement('div');
+    simpleView.id = 'modal-simple-view';
+    simpleView.className = 'modal-drive-simple';
+    simpleView.style.display = 'none';
+
     selectedDrives.forEach(path => {
         const disk = availableDisksData.find(d => d.path === path);
         if (!disk) return;
-        
+
         const rawVendor = disk.vendor ? disk.vendor.trim() + ' ' : '';
         const rawModel = disk.model ? disk.model.trim() : 'Unknown';
         const normalizedId = (rawVendor + rawModel).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const serial = disk.serial || 'N/A';
+        const sizeStr = formatBytes(parseInt(disk.size));
 
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="70" height="50" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="12" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
-        
-        let extraInputs = "";
+
+        let extraInputsDetailed = "";
+        let extraInputsSimple = "";
         if (generatePdf) {
-            extraInputs = `
-                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 150px;">
+            const tpl = (suffix) => `
+                <div class="modal-pdf-fields" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 130px;">
                         <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('datacenter', 'Datacenter')}</label>
-                        <select id="dc-${disk.path}" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+                        <select id="dc-${suffix}" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                             ${options}
                         </select>
                     </div>
-                    <div style="flex: 1; min-width: 150px;">
+                    <div style="flex: 1; min-width: 130px;">
                         <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('server_name', 'Server Name')}</label>
-                        <input type="text" id="srv-${disk.path}" placeholder="Optional" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+                        <input type="text" id="srv-${suffix}" placeholder="Optional" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                     </div>
-                    <div style="flex: 1; min-width: 150px;">
+                    <div style="flex: 1; min-width: 130px;">
                         <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('inventory_id', 'Inventory ID')}</label>
-                        <input type="text" id="inv-${disk.path}" placeholder="Optional" style="width: 100%; padding: 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+                        <input type="text" id="inv-${suffix}" placeholder="Optional" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
                     </div>
                 </div>
             `;
+            extraInputsDetailed = tpl(disk.path + '--d');
+            extraInputsSimple = tpl(disk.path + '--s');
         }
 
-        modalList.innerHTML += `
+        detailedView.innerHTML += `
             <div class="modal-drive-item" style="display: block; padding: 15px; margin-bottom: 10px; background: var(--bg-panel); border: 1px solid #334155; border-radius: 6px;">
                 <div style="display: flex; gap: 15px;">
                     <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
                     <div>
                         <div style="font-weight: bold; color: white; font-size: 16px;">${rawVendor + rawModel}</div>
-                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">${disk.path} | S/N: ${disk.serial || 'N/A'} | ${formatBytes(parseInt(disk.size))}</div>
+                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">${disk.path} | S/N: ${serial} | ${sizeStr}</div>
                     </div>
                 </div>
-                ${extraInputs}
+                ${extraInputsDetailed}
+            </div>
+        `;
+
+        simpleView.innerHTML += `
+            <div class="modal-drive-simple-row">
+                <div class="modal-drive-simple-item">
+                    <span class="modal-drive-simple-path">${disk.path}</span>
+                    <span class="modal-drive-simple-model">${rawVendor + rawModel}</span>
+                    <span class="modal-drive-simple-serial">${serial}</span>
+                    <span class="modal-drive-simple-size">${sizeStr}</span>
+                </div>
+                ${extraInputsSimple}
             </div>
         `;
     });
+
+    list.appendChild(detailedView);
+    list.appendChild(simpleView);
+
+    modalViewMode = 'detailed';
+    document.getElementById('btn-view-detailed').classList.add('active');
+    document.getElementById('btn-view-simple').classList.remove('active');
+    switchModalView('detailed');
+
     document.getElementById('shred-modal').classList.add('active');
     window.applyLocalization();
 }
@@ -416,7 +490,7 @@ function hideModal() {
 }
 
 async function executeWipe() {
-    const method = document.getElementById('wipe-method').value;
+    const method = selectedMethod;
     const verify = document.getElementById('wipe-verify').value;
     const btn = document.getElementById('btn-confirm');
     
@@ -427,7 +501,7 @@ async function executeWipe() {
     const debugOutput = document.getElementById('debug-output');
     
     if (isDebug) {
-        debugConsole.style.display = 'block';
+        debugConsole.style.display = 'flex';
         debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Initiate clicked. Sending request...<br>`;
     }
     
@@ -436,9 +510,10 @@ async function executeWipe() {
 
     try {
         let driveObjects = selectedDrives.map(path => {
-            const srvInput = document.getElementById(`srv-${path}`);
-            const invInput = document.getElementById(`inv-${path}`);
-            const dcSelect = document.getElementById(`dc-${path}`);
+            const suffix = modalViewMode === 'simple' ? '--s' : '--d';
+            const srvInput = document.getElementById(`srv-${path}${suffix}`);
+            const invInput = document.getElementById(`inv-${path}${suffix}`);
+            const dcSelect = document.getElementById(`dc-${path}${suffix}`);
             
             return {
                 path: path,
@@ -475,6 +550,10 @@ async function executeWipe() {
         if (result.status === 'success') {
             if (isDebug) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
             selectedDrives = [];
+            selectedMethod = activeShredTab === 'nvme' ? 'nvme-user' : 'dodshort';
+            const container = document.getElementById('wipe-method-list');
+            if (container) { container.dataset.hash = ''; }
+            updateShredConfigUI();
             hideModal();
         } else {
             if (isDebug) debugOutput.innerHTML += `<span style="color: red;">[Error]</span> ${result.message}<br>`;

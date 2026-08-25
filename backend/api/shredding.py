@@ -6,10 +6,11 @@ import time
 from fastapi import APIRouter, BackgroundTasks, Request
 
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
+from .disks import validate_drive_path
 
 from .models import ShredRequest, StopRequest
 from .history import append_history
-from .system import get_local_time
+from .system import get_local_time, get_client_ip
 from .config import REPORTS_DIR
 from .pdf_generator import generate_erasure_certificate
 
@@ -27,12 +28,10 @@ def get_scsi_host_for_drive(drive_name: str) -> str:
 
 def cycle_sata_link_power(drive_name: str):
     host = get_scsi_host_for_drive(drive_name)
-    if not host:
-        print(f"No SCSI host found for {drive_name}, skipping link power cycle.")
-        return False
-    
-    policy_path = f"/sys/class/scsi_host/{host}/link_power_management_policy"
-    if os.path.exists(policy_path):
+    cycled = False
+
+    policy_path = f"/sys/class/scsi_host/{host}/link_power_management_policy" if host else None
+    if policy_path and os.path.exists(policy_path):
         try:
             print(f"Cycling SATA link power for {drive_name} (host: {host}) to unfreeze drive...")
             with open(policy_path, "w") as f:
@@ -45,12 +44,32 @@ def cycle_sata_link_power(drive_name: str):
             
             time.sleep(2)
             print(f"SATA link power cycle for {drive_name} completed.")
-            return True
+            cycled = True
         except Exception as e:
             print(f"Error cycling link power for {drive_name} on {host}: {e}")
     else:
-        print(f"Link power policy file not found at {policy_path}")
-    return False
+        if host:
+            print(f"Link power policy file not found at {policy_path}")
+        else:
+            print(f"No SCSI host found for {drive_name}, skipping link power cycle.")
+
+    # Also toggle the SCSI device state (offline -> running) to trigger a link reset.
+    state_path = f"/sys/block/{drive_name}/device/state"
+    if os.path.exists(state_path):
+        try:
+            print(f"Toggling device state for {drive_name} (offline -> running) to unfreeze...")
+            with open(state_path, "w") as f:
+                f.write("offline\n")
+            time.sleep(3)
+            with open(state_path, "w") as f:
+                f.write("running\n")
+            time.sleep(2)
+            print(f"Device state toggle for {drive_name} completed.")
+            cycled = True
+        except Exception as e:
+            print(f"Error toggling device state for {drive_name}: {e}")
+
+    return cycled
 
 
 @router.get("/api/wipe-status")
@@ -130,7 +149,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
     """
     debug_logs = []
     try:
-        ip = http_request.client.host if http_request.client else "Unknown"
+        ip = get_client_ip(http_request)
         debug_logs.append(f"Received ShredRequest payload from {ip}: {request.dict()}")
         spawned_containers = []
         start_time = get_local_time(request.timezone)
@@ -139,6 +158,10 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
         for drive_obj in request.drives:
             drive = drive_obj.path
             drive_name = drive.split('/')[-1]
+            valid, err_msg = validate_drive_path(drive)
+            if not valid:
+                debug_logs.append(f"Rejected drive {drive}: {err_msg}")
+                return {"status": "error", "message": err_msg, "debug": debug_logs}
             debug_logs.append(f"Configuring wipe for drive: {drive}")
             
             serial = "UNKNOWN"
@@ -157,10 +180,11 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
             container_name = f"disk_hunter_wipe_{drive_name}--{serial}"
             
             devices = [f"{drive}:{drive}"]
+            container_env = {"TERM": "xterm"}
             if request.method in ["nvme-user", "nvme-crypto"]:
                 image = "disk-hunter-nvme"
                 ses_val = "1" if request.method == "nvme-user" else "2"
-                args = ["format", drive, f"--ses={ses_val}", "--force"]
+                args = [drive, f"--ses={ses_val}", "--force"]
                 # Extract nvme controller (e.g. /dev/nvme0 from /dev/nvme0n1)
                 nvme_match = re.match(r"^(/dev/nvme\d+)", drive)
                 if nvme_match:
@@ -176,6 +200,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                     debug_logs.append(f"Failed to cycle SATA link power for {drive_name}: {e}")
                 image = "disk-hunter-hdparm"
                 args = [drive, "enhanced" if request.method == "ata-enhanced" else "secure"]
+                container_env["FROZEN_FALLBACK_WIPE"] = os.environ.get("FROZEN_FALLBACK_WIPE", "1")
             else:
                 image = "disk-hunter-nwipe"
                 args = ["--autonuke", "--nogui", "--verbose", f"--method={request.method}", f"--verify={request.verify}", drive]
@@ -187,7 +212,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 privileged=True,
                 devices=devices,
                 tty=True,
-                env={"TERM": "xterm"},
+                env=container_env,
                 debug_list=debug_logs
             )
             

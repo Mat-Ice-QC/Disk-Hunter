@@ -7,12 +7,11 @@ from .config import DATA_DIR
 router = APIRouter()
 
 def get_safe_path(base_dir: str, requested_path: str) -> str:
-    # Ensure the requested path stays within the base_dir to prevent directory traversal
-    base_abs = os.path.abspath(base_dir)
-    if not base_abs.endswith(os.sep):
-        base_abs += os.sep
-    safe_path = os.path.abspath(os.path.join(base_abs, requested_path))
-    if not safe_path.startswith(base_abs):
+    base_real = os.path.realpath(base_dir)
+    if os.path.isabs(requested_path) or ".." in requested_path.replace("\\", "/").split("/"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    safe_path = os.path.realpath(os.path.join(base_real, requested_path))
+    if safe_path != base_real and not safe_path.startswith(base_real + os.sep):
         raise HTTPException(status_code=403, detail="Access denied")
     return safe_path
 

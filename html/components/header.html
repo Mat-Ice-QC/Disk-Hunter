@@ -1,6 +1,8 @@
 <div class="sys-info">
     <div class="info-pill"><span class="temp-icon">🖥️</span> <span data-i18n="sys_host">Host</span>: <span id="sys-hostname">Loading...</span></div>
-    <div class="info-pill"><span class="temp-icon">🌡️</span> <span data-i18n="sys_temp">Temp</span>: <span id="sys-temp">--°C</span></div>
+    <a href="temperature.html" class="info-pill temp-pill-link" id="temp-pill-container" data-tooltip="Click to view all temperature sensors">
+        <span class="temp-icon">🌡️</span> <span data-i18n="sys_temp">Temp</span>: <span id="sys-temp">--°C</span>
+    </a>
     <div class="info-pill"><span class="ip-icon">🌐</span> <span data-i18n="sys_ip">IP</span>: <span id="sys-ip">--</span></div>
 </div>
 <div class="sys-info">
@@ -12,11 +14,14 @@
     <button class="header-docs-btn" id="btn-layout-toggle" data-tooltip="Toggle Layout">
         <span id="layout-toggle-text">Grid View</span>
     </button>
+    <button class="header-docs-btn" id="btn-potato-toggle" data-tooltip="Toggle Potato PC Mode (disable blur/animations)">
+        <span id="potato-toggle-text">Potato Mode</span>
+    </button>
     <div class="info-pill lang-pill">
         <select id="lang-select">
-            <option value="en" style="background:#0f172a;">EN</option>
-            <option value="fr" style="background:#0f172a;">FR</option>
-            <option value="es" style="background:#0f172a;">ES</option>
+            <option value="en">EN</option>
+            <option value="fr">FR</option>
+            <option value="es">ES</option>
         </select>
     </div>
 </div>

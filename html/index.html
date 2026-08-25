@@ -14,7 +14,10 @@
         <div id="header-container" class="header"></div>
 
         <div class="content">
-            <h2>Active Disks</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h2 style="margin:0;">Active Disks</h2>
+                <button id="btn-rescan-hardware" class="btn-action" data-tooltip="Rescan PCIe and SCSI buses to detect newly connected drives without rebooting">Rescan Hardware</button>
+            </div>
             
             <div id="disk-list-container">
                 </div>

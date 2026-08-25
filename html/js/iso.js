@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const debugConsole = document.getElementById('debug-console');
     if (debugConsole) {
         if (isDebug) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             const debugOutput = document.getElementById('debug-output');
             if (debugOutput) {
                 debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Diagnostic terminal active. Awaiting execution...<br>`;
@@ -64,7 +64,7 @@ async function startDownload() {
     const debugConsole = document.getElementById('debug-console');
     const debugOutput = document.getElementById('debug-output');
     if (isDebug && debugConsole && debugOutput) {
-        debugConsole.style.display = 'block';
+        debugConsole.style.display = 'flex';
         debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Download clicked. Sending request...<br>`;
     }
     
@@ -113,7 +113,7 @@ async function startWrite() {
         const debugConsole = document.getElementById('debug-console');
         const debugOutput = document.getElementById('debug-output');
         if (isDebug && debugConsole && debugOutput) {
-            debugConsole.style.display = 'block';
+            debugConsole.style.display = 'flex';
             debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Write clicked. Sending request...<br>`;
         }
 

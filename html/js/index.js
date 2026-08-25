@@ -19,9 +19,52 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Immediate HTTP scan fallback
     fetchDisks();
 
+    // Rescan hardware button
+    const btnRescan = document.getElementById('btn-rescan-hardware');
+    if (btnRescan) {
+        btnRescan.addEventListener('click', () => {
+            customConfirm('Rescan PCIe and SCSI buses for newly connected drives? This takes a few seconds.', async () => {
+                const originalText = btnRescan.innerText;
+                btnRescan.disabled = true;
+                btnRescan.innerText = 'Scanning...';
+                try {
+                    const res = await fetch('/api/system/rescan', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        customAlert(data.results.join('\n'), 'Rescan Complete');
+                        window.diskService.cache = null;
+                        fetchDisks();
+                    } else {
+                        customAlert('Rescan failed: ' + (data.message || 'unknown error'), 'Error');
+                    }
+                } catch (e) {
+                    customAlert('Network error during rescan.', 'Error');
+                } finally {
+                    btnRescan.disabled = false;
+                    btnRescan.innerText = originalText;
+                }
+            }, 'Rescan Hardware');
+        });
+    }
+
     // 2. WebSocket real-time synchronizers
     document.addEventListener('ws-disks', (e) => {
         renderDisks(e.detail);
+    });
+
+    // Apply SMART health from WS broadcast (avoids 21 per-disk HTTP calls)
+    document.addEventListener('ws-smart_health', (e) => {
+        const healthMap = e.detail;
+        if (!healthMap || typeof healthMap !== 'object') return;
+        Object.entries(healthMap).forEach(([diskName, health]) => {
+            window.smartStatusCache[diskName] = {
+                timestamp: Date.now(),
+                data: { health: health }
+            };
+            const badge = document.getElementById(`smart-badge-${diskName}`);
+            if (badge) applySmartStatusToBadge(badge, diskName, { health: health });
+        });
+        try { sessionStorage.setItem('dh_smart_cache', JSON.stringify(window.smartStatusCache)); } catch(err) {}
     });
 
     document.addEventListener('dh-language-changed', (e) => {
@@ -267,8 +310,8 @@ function renderDisks(disksInput) {
 
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const imgElement = `
-            <div class="drive-illustration">
-                <img src="${imageUrl}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover; display: none; z-index: 5;" onload="this.style.display='block';" alt="Drive Cover Image">
+            <div class="drive-illustration" onclick="openImageLightbox('${imageUrl}', '${fullName.replace(/'/g, "\\'")}')" style="cursor: pointer;" title="Click to enlarge">
+                <img src="${imageUrl}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: contain; display: none; z-index: 5;" onload="this.style.display='block';" alt="Drive Cover Image">
                 ${driveSVG}
             </div>
         `;
@@ -397,8 +440,10 @@ function renderDisks(disksInput) {
         `;
         container.appendChild(card);
 
-        // Asynchronously fetch SMART details to show passed/failing state dynamically
-        loadSmartStatus(disk.name);
+        // Asynchronously fetch SMART details only if not already known from WS broadcast
+        if (!getCachedSmartStatus(disk.name)) {
+            loadSmartStatus(disk.name);
+        }
     });
 
     // Restore statuses for any active operations
@@ -545,3 +590,27 @@ function updateOperationsUI() {
         }
     });
 }
+
+// --- Image Lightbox ---
+window.openImageLightbox = function(url, title) {
+    let modal = document.getElementById('image-lightbox');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'image-lightbox';
+        modal.className = 'lightbox-overlay';
+        modal.innerHTML = `
+            <div class="lightbox-content">
+                <button class="lightbox-close" onclick="document.getElementById('image-lightbox').classList.remove('active')">&times;</button>
+                <img class="lightbox-img" alt="Drive Image">
+                <div class="lightbox-title"></div>
+            </div>
+        `;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+        document.body.appendChild(modal);
+    }
+    modal.querySelector('.lightbox-img').src = url;
+    modal.querySelector('.lightbox-title').innerText = title || '';
+    modal.classList.add('active');
+};

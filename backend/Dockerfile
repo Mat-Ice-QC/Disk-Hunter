@@ -1,4 +1,5 @@
-FROM python:3.10
+ARG PYTHON_IMAGE=python:3.10@sha256:7592f66a25f37c4e88ac9d1eee26b0fd7b6d5d56ace531ffa6aaf3a5317cde27
+FROM ${PYTHON_IMAGE}
 
 WORKDIR /app
 

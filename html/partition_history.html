@@ -32,6 +32,7 @@
                             <th>Date & Time</th>
                             <th>Event</th>
                             <th>Drive</th>
+                            <th>S/N</th>
                             <th>Action</th>
                             <th>Parameters</th>
                             <th>User (IP)</th>
@@ -39,9 +40,28 @@
                         </tr>
                     </thead>
                     <tbody id="history-body">
-                        <tr id="loading-message"><td colspan="7">Loading logs...</td></tr>
+                        <tr id="loading-message"><td colspan="8">Loading logs...</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Detail Modal (command + output) -->
+    <div id="log-detail-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 700px;">
+            <div class="modal-header" id="log-detail-title">Log Details</div>
+            <div class="modal-content" style="padding: 20px;">
+                <p style="margin-bottom: 6px;"><strong>Drive:</strong> <span id="log-detail-drive">N/A</span> &nbsp; <strong>S/N:</strong> <span id="log-detail-serial">N/A</span></p>
+                <p style="margin-bottom: 6px;"><strong>Event:</strong> <span id="log-detail-event">N/A</span></p>
+                <p style="margin-bottom: 12px;"><strong>Status:</strong> <span id="log-detail-status">N/A</span></p>
+                <label style="display:block; margin-bottom: 4px; color: var(--text-light);">Command run by worker:</label>
+                <pre id="log-detail-command" style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow:auto; font-size: 12px;">N/A</pre>
+                <label style="display:block; margin-top: 12px; margin-bottom: 4px; color: var(--text-light);">Worker output:</label>
+                <pre id="log-detail-output" style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow:auto; font-size: 12px;">N/A</pre>
+            </div>
+            <div class="modal-actions" style="justify-content: center;">
+                <button id="btn-log-detail-close" class="btn-action btn-smart">Close</button>
             </div>
         </div>
     </div>

@@ -17,6 +17,24 @@
 
         <div class="content">
             <h2>Select a Drive to Partition</h2>
+
+            <div id="batch-panel" class="batch-panel">
+                <div class="batch-panel-header">
+                    <h4>⚡ Batch Operations</h4>
+                    <span class="warn-pill">⚠ Destroys all data</span>
+                </div>
+                <div class="batch-panel-body">
+                    <div class="batch-field">
+                        <select id="batch-label-type" class="shred-select">
+                            <option value="gpt" selected>GPT (Modern / UEFI)</option>
+                            <option value="msdos">MSDOS (Legacy / MBR)</option>
+                        </select>
+                    </div>
+                    <button class="btn-partition danger" id="btn-batch-wipe" onclick="batchWipeSelected()">Wipe Selected Drives</button>
+                </div>
+                <div id="batch-results" class="batch-results"></div>
+            </div>
+
             <div id="drive-selector" class="drive-list-grid">
                 <p>Scanning hardware...</p>
             </div>
@@ -26,10 +44,9 @@
     <!-- Partition Editor Modal -->
     <div id="partition-modal" class="modal-overlay">
         <div class="modal-box" style="width: 95%; max-width: 1200px;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <h3 id="current-drive-label" style="margin: 0; color: var(--primary);">Partition Editor</h3>
-                <span class="close-btn" onclick="closeModal()"
-                    style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+            <div class="modal-header">
+                <h3 id="current-drive-label">Partition Editor</h3>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
             </div>
             <div class="modal-content">
 
@@ -40,42 +57,38 @@
                 </div>
 
                 <div class="action-bar">
-                    <button class="btn-action" onclick="showForm('form-mklabel')" id="btn-mklabel">New Partition
-                        Table</button>
-                    <button class="btn-action" onclick="showForm('form-mkpart')" id="btn-mkpart" disabled>Create
-                        Partition</button>
-                    <button class="btn-action" onclick="showForm('form-format')" id="btn-format"
-                        disabled>Format</button>
-                    <button class="btn-action" onclick="showForm('form-rm')" id="btn-rm" disabled>Delete</button>
-                    <button class="btn-action" onclick="showForm('form-name')" id="btn-name" disabled>Name
-                        (GPT/Mac)</button>
-                    <button class="btn-action" onclick="showForm('form-set')" id="btn-set" disabled>Manage
-                        Flags</button>
+                    <button class="btn-action" onclick="showForm('form-mklabel')" id="btn-mklabel" title="Create a new partition table (destroys all data)">New Partition Table</button>
+                    <button class="btn-action" onclick="showForm('form-mkpart')" id="btn-mkpart" disabled title="Select free space first">Create Partition</button>
+                    <button class="btn-action" onclick="showForm('form-format')" id="btn-format" disabled title="Select a partition first">Format</button>
+                    <button class="btn-action" onclick="showForm('form-rm')" id="btn-rm" disabled title="Select a partition first">Delete</button>
+                    <button class="btn-action" onclick="showForm('form-name')" id="btn-name" disabled title="Select a partition first">Name (GPT/Mac)</button>
+                    <button class="btn-action" onclick="showForm('form-set')" id="btn-set" disabled title="Select a partition first">Manage Flags</button>
+                    <span class="action-hint">Select a partition or free space to enable actions</span>
                 </div>
 
                 <!-- Form: mklabel -->
                 <div id="form-mklabel" class="action-form">
-                    <h4>Create Partition Table <span style="color:var(--accent-red);">(WARNING: Destroys all
-                            data)</span></h4>
+                    <h4>Create Partition Table <span class="warn-pill">⚠ Destroys all data</span></h4>
                     <div class="form-row">
                         <div>
                             <label class="shred-label"><span>Type</span><span class="help-indicator" data-tooltip="<strong>Partition Table Standards</strong><br>GPT is standard for modern UEFI computers and disks larger than 2TB. MSDOS is for older BIOS computers (MBR).">?</span></label>
                             <select id="mklabel-type" class="shred-select">
-                                <option value="aix">aix</option>
-                                <option value="amiga">amiga</option>
-                                <option value="bsd">bsd</option>
-                                <option value="dvh">dvh</option>
                                 <option value="gpt" selected>gpt</option>
-                                <option value="mac">mac</option>
                                 <option value="msdos">msdos</option>
-                                <option value="pc98">pc98</option>
-                                <option value="sun">sun</option>
-                                <option value="loop">loop</option>
+                                <optgroup label="Advanced">
+                                    <option value="aix">aix</option>
+                                    <option value="amiga">amiga</option>
+                                    <option value="bsd">bsd</option>
+                                    <option value="dvh">dvh</option>
+                                    <option value="mac">mac</option>
+                                    <option value="pc98">pc98</option>
+                                    <option value="sun">sun</option>
+                                    <option value="loop">loop</option>
+                                </optgroup>
                             </select>
                         </div>
                     </div>
-                    <button class="btn-shred" style="background: var(--accent-red);"
-                        onclick="submitAction('mklabel')">Apply</button>
+                    <button class="btn-partition danger" onclick="submitAction('mklabel')">Apply</button>
                 </div>
 
                 <!-- Form: mkpart -->
@@ -88,7 +101,7 @@
                         </div>
                         <div>
                             <label class="shred-label">Size</label>
-                            <div style="display: flex; gap: 5px;">
+                            <div class="size-input-group">
                                 <input type="number" id="mkpart-size" class="form-input-text" placeholder="Size">
                                 <select id="mkpart-unit" class="shred-select" style="flex: 1;">
                                     <option value="MB">MB</option>
@@ -102,7 +115,7 @@
                     <input type="hidden" id="mkpart-start-bytes">
                     <input type="hidden" id="mkpart-max-bytes">
                     <input type="hidden" id="mkpart-is-end">
-                    <button class="btn-shred" onclick="submitAction('mkpart')">Add</button>
+                    <button class="btn-partition" onclick="submitAction('mkpart')">Add</button>
                 </div>
 
                 <!-- Form: format -->
@@ -120,7 +133,7 @@
                             </select>
                         </div>
                     </div>
-                    <button class="btn-shred" onclick="submitAction('format')">Format</button>
+                    <button class="btn-partition" onclick="submitAction('format')">Format</button>
                 </div>
 
                 <!-- Form: rm -->
@@ -128,7 +141,7 @@
                     <h4>Delete Partition</h4>
                     <input type="hidden" id="rm-num">
                     <p>Are you sure you want to delete the selected partition?</p>
-                    <button class="btn-shred" style="background: var(--accent-red);"
+                    <button class="btn-partition danger"
                         onclick="submitAction('rm')">Delete</button>
                 </div>
 
@@ -142,7 +155,7 @@
                             <input type="text" id="name-val" class="form-input-text" placeholder="Partition Name">
                         </div>
                     </div>
-                    <button class="btn-shred" onclick="submitAction('name')">Apply</button>
+                    <button class="btn-partition" onclick="submitAction('name')">Apply</button>
                 </div>
 
                 <!-- Form: set -->
@@ -171,7 +184,7 @@
                             </select>
                         </div>
                     </div>
-                    <button class="btn-shred" onclick="submitAction('set')">Apply</button>
+                    <button class="btn-partition" onclick="submitAction('set')">Apply</button>
                 </div>
 
                 <div id="action-status" class="status-msg mt-10"></div>
@@ -179,12 +192,12 @@
                 <table class="partition-table">
                     <thead>
                         <tr>
-                            <th>Partition</th>
+                            <th>#</th>
                             <th>File System</th>
-                            <th>Label / Name</th>
+                            <th>Name / Label</th>
+                            <th>Start</th>
+                            <th>End</th>
                             <th>Size</th>
-                            <th>Used</th>
-                            <th>Unused</th>
                             <th>Flags</th>
                         </tr>
                     </thead>
@@ -196,10 +209,6 @@
                     </tbody>
                 </table>
 
-                <div id="debug-console" style="margin-top: 30px;">
-                    <div class="debug-header">API DEBUG TERMINAL</div>
-                    <div id="debug-output">Awaiting execution...</div>
-                </div>
             </div> <!-- end modal-content -->
         </div> <!-- end modal-box -->
     </div>

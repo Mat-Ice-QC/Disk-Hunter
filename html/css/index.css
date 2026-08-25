@@ -102,10 +102,10 @@
     100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
 }
 
-.led-normal { color: #3b82f6; fill: currentColor; }
-.led-warning { color: #f59e0b; fill: currentColor; }
-.led-danger { color: #ef4444; fill: currentColor; animation: led-fast-blink 0.6s infinite alternate ease-in-out; }
-.led-ok { color: #10b981; fill: currentColor; }
+.led-normal { color: var(--primary); fill: currentColor; }
+.led-warning { color: var(--accent-amber); fill: currentColor; }
+.led-danger { color: var(--accent-red); fill: currentColor; animation: led-fast-blink 0.6s infinite alternate ease-in-out; }
+.led-ok { color: var(--accent-emerald); fill: currentColor; }
 
 @keyframes led-fast-blink {
     0% { opacity: 0.2; }
@@ -146,7 +146,7 @@
 }
 
 .disk-label-subtitle {
-    color: #fbbf24;
+    color: var(--accent-amber);
     font-size: 12.5px;
     margin-bottom: 6px;
     font-weight: 600;

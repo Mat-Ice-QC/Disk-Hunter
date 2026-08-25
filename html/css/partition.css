@@ -1,46 +1,130 @@
 /* html/css/partition.css */
 
-/* --- Tables --- */
-.partition-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
-.partition-table th { background: rgba(255,255,255,0.05); padding: 15px; text-align: left; color: var(--primary); font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.partition-table td { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; color: var(--text-main); }
-.partition-table tr:hover { background: rgba(255,255,255,0.03); }
+/* --- Drive List Grid --- */
+.drive-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 18px;
+    margin-top: 20px;
+}
 
-/* --- Drive Lists --- */
-.drive-list { list-style: none; padding: 0; margin: 0; }
-.drive-list li { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 12px; }
-.drive-list li:hover { background: rgba(255,255,255,0.05); }
-.drive-list li.selected { border-color: var(--primary); background: linear-gradient(145deg, rgba(59, 130, 246, 0.1), rgba(0,0,0,0.3)); }
-.drive-list img { width: 48px; height: 36px; object-fit: cover; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
+/* --- Drive List Cards (aligned with index.css premium cards) --- */
+#drive-selector .drive-card {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.65));
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px;
+    padding: 22px; display: flex; gap: 18px; align-items: center;
+    cursor: pointer;
+    transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), border-color 0.4s, box-shadow 0.4s;
+    position: relative; overflow: hidden;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.4);
+}
+#drive-selector .drive-card::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+    pointer-events: none;
+}
+#drive-selector .drive-card:hover {
+    transform: translateY(-5px); border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 20px 40px -15px rgba(0,0,0,0.6), 0 0 25px 0 rgba(59,130,246,0.15);
+}
+#drive-selector .drive-card.selected {
+    border-color: var(--primary);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.12), rgba(15, 23, 42, 0.8));
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.2);
+}
+#drive-selector .drive-card-img {
+    width: 96px; height: 64px; object-fit: cover; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08); flex-shrink: 0;
+}
+#drive-selector .drive-card-body { flex: 1; min-width: 0; position: relative; z-index: 1; }
+#drive-selector .drive-card-title { font-weight: 700; font-size: 15px; color: var(--text-main); margin-bottom: 6px; }
+#drive-selector .drive-card-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+#drive-selector .drive-card-meta strong { color: var(--primary); margin-right: 3px; }
+#drive-selector .drive-card-bar { margin-top: 12px; width: 100%; }
+#drive-selector .drive-card-bar-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }
+#drive-selector .drive-card-bar-track { width: 100%; height: 6px; background: rgba(0,0,0,0.4); border-radius: 3px; overflow: hidden; }
+#drive-selector .drive-card-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--primary), #60a5fa); transition: width 0.4s; }
 
-/* --- Action Bars & Forms --- */
-.action-bar { display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
-.action-form { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; margin-top: 20px; display: none; border: 1px solid rgba(255,255,255,0.05); }
+.empty-state { color: var(--text-muted); text-align: center; padding: 40px; font-size: 14px; }
+
+/* --- Batch Panel --- */
+.batch-panel {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.65));
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;
+    padding: 16px 20px; margin-bottom: 20px;
+}
+.batch-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.batch-panel-header h4 { margin: 0; font-size: 15px; color: var(--text-main); font-weight: 700; }
+.batch-panel-body { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.batch-field { flex: 0 0 220px; }
+.batch-field .shred-select { padding: 10px 14px; }
+.batch-field .custom-select-wrapper { margin: 0; }
+#btn-batch-wipe { width: auto; padding: 12px 28px; flex-shrink: 0; font-size: 13px; height: 47px; box-sizing: border-box; }
+.batch-results { margin-top: 14px; }
+.batch-summary { font-size: 14px; font-weight: 700; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 8px; }
+.batch-result-row { font-size: 13px; padding: 4px 0; }
+.batch-progress { font-size: 13px; color: var(--primary); font-weight: 600; padding: 8px 0; }
+
+/* --- Partition Modal --- */
+#partition-modal .modal-box { background: linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(10, 15, 26, 0.98)); border: 1px solid rgba(255,255,255,0.08); }
+#partition-modal .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+#partition-modal .modal-header h3 { margin: 0; font-size: 18px; color: var(--primary); }
+#partition-modal .close-btn { cursor: pointer; font-size: 26px; color: var(--text-muted); transition: color 0.2s; line-height: 1; }
+#partition-modal .close-btn:hover { color: var(--accent-red); }
+#partition-modal .modal-content { padding: 18px 22px; overflow-y: auto; }
+
+/* --- Disk Info --- */
+#disk-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+#disk-info .info-tile { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+#disk-info .info-tile strong { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+#disk-info .info-tile span { color: var(--text-main); font-size: 14px; font-weight: 600; }
+
+/* --- Partition Graphic --- */
+.partition-graphic { display: flex; width: 100%; height: 56px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; margin-bottom: 12px; position: relative; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.partition-graphic::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 40%; background: linear-gradient(to bottom, rgba(255,255,255,0.06), transparent); pointer-events: none; z-index: 5; }
+.partition-block { height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; border-right: 1px solid rgba(0,0,0,0.4); cursor: pointer; transition: filter 0.2s, box-shadow 0.2s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; min-width: 36px; box-sizing: border-box; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+.partition-block:last-child { border-right: none; }
+.partition-block:hover { filter: brightness(1.25); }
+.partition-block.selected { box-shadow: inset 0 0 0 3px var(--primary), 0 0 12px rgba(59,130,246,0.4); z-index: 10; }
+.partition-block.free-space { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04) 8px, transparent 8px, transparent 16px); color: var(--text-muted); text-shadow: none; }
+.partition-block.free-space.selected { box-shadow: inset 0 0 0 3px var(--primary), 0 0 12px rgba(59,130,246,0.4); }
+
+/* --- Action Bar --- */
+.action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.action-bar .btn-action { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); color: var(--text-main); font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.action-bar .btn-action:hover:not(:disabled) { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.5); color: #60a5fa; transform: translateY(-1px); }
+.action-bar .btn-action:disabled { opacity: 0.35; cursor: not-allowed; }
+.action-bar .btn-action.active { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.6); color: #60a5fa; }
+.action-bar .action-hint { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+
+/* --- Action Forms --- */
+.action-form { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 12px; display: none; padding: 16px; }
 .action-form.active { display: block; animation: fadeIn 0.2s; }
-.form-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
-.form-row > div { flex: 1; min-width: 150px; }
+.action-form h4 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+.warn-pill { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: var(--accent-red); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; }
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.form-row > div { flex: 1; min-width: 140px; }
+.shred-label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.shred-select { width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.4); color: var(--text-main); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; box-sizing: border-box; font-size: 13px; }
+.shred-select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+.form-input-text { width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.4); color: var(--text-main); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; box-sizing: border-box; font-size: 13px; }
+.form-input-text:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+.size-input-group { display: flex; gap: 5px; }
 
-/* --- Partition Graphics --- */
-.partition-graphic { display: flex; width: 100%; height: 60px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; margin-top: 20px; position: relative; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
-.partition-block { height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: bold; border-right: 1px solid rgba(0,0,0,0.5); cursor: pointer; transition: all 0.2s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 5px; min-width: 40px; box-sizing: border-box; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
-.partition-block:hover { filter: brightness(1.2); }
-.partition-block.selected { box-shadow: inset 0 0 0 3px white; z-index: 10; }
-.partition-block.free-space { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 10px, transparent 10px, transparent 20px); color: #94a3b8; text-shadow: none; }
-.partition-block.free-space.selected { box-shadow: inset 0 0 0 3px var(--primary); }
+/* --- Submit Button --- */
+.btn-partition { width: 100%; padding: 10px; background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
+.btn-partition:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }
+.btn-partition.danger { background: linear-gradient(135deg, var(--accent-red), #b91c1c); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25); }
+.btn-partition.danger:hover { box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); }
 
-/* --- Disk Info Layout --- */
-#disk-info { display: flex; gap: 15px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; flex-wrap: wrap; font-size: 15px; color: var(--text-main); border: 1px solid rgba(255,255,255,0.05); }
-#disk-info div { background: rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
-#disk-info strong { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+/* --- Status Message --- */
+.status-msg { font-size: 13px; font-weight: 600; padding: 8px 0; min-height: 20px; }
 
-/* --- Form Elements --- */
-.shred-label { display: block; color: var(--text-muted); margin-bottom: 8px; }
-.shred-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; }
-.shred-select:focus { border-color: var(--primary); outline: none; }
-
-/* --- Buttons & Cards --- */
-.btn-shred { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--primary), #2563eb); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2); }
-.btn-shred:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(59, 130, 246, 0.4); }
-
-.drive-card { cursor: pointer; }
-.drive-card:hover { background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 1)); border-color: rgba(59, 130, 246, 0.5); }
+/* --- Partition Table --- */
+.partition-table { width: 100%; border-collapse: collapse; background: rgba(0,0,0,0.2); border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+.partition-table th { background: rgba(255,255,255,0.04); padding: 10px 14px; text-align: left; color: var(--primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.partition-table td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 13px; color: var(--text-main); }
+.partition-table tr:hover td { background: rgba(255,255,255,0.02); }
+.partition-table tr.selected td { background: rgba(59,130,246,0.08); }

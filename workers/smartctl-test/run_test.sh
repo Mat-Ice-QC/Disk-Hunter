@@ -13,6 +13,10 @@ fi
 echo "Starting S.M.A.R.T. test ($TEST_TYPE) on $DEVICE"
 echo "Executing: smartctl -t \"$TEST_TYPE\" \"$DEVICE\""
 
+# Record the number of existing self-test log entries so we can detect when
+# a new entry appears (i.e. the test completed, possibly very quickly on SSDs).
+INITIAL_LOG_COUNT=$(smartctl -l selftest "$DEVICE" 2>&1 | grep -c '^#')
+
 START_OUTPUT=$(smartctl -t "$TEST_TYPE" "$DEVICE" 2>&1)
 EXIT_CODE=$?
 echo "$START_OUTPUT"
@@ -29,11 +33,25 @@ fi
 
 echo "Monitoring test progress..."
 
-while true; do
-  STATUS_LINE=$(smartctl -a "$DEVICE" | grep "Self-test execution status")
+# Wait briefly for the drive to register the test before the first check.
+sleep 5
 
-  if echo "$STATUS_LINE" | grep -q "in progress"; then
-    REMAINING=$(echo "$STATUS_LINE" | sed -n 's/.* \([0-9]\{1,3\}\)% of test remaining.*/\1/p')
+# Track whether we've ever seen the test "in progress" — we only accept a
+# "completed" status AFTER we've confirmed the test was running.
+SEEN_IN_PROGRESS=0
+WAIT_RETRIES=0
+MAX_WAIT_RETRIES=6  # 6 x 30s = 3 min max waiting for the test to register
+
+while true; do
+  # Capture the self-test execution status line AND the following lines,
+  # because smartctl splits the description across multiple tab-indented
+  # lines (e.g. "% of test remaining" and "without error" are on the
+  # NEXT line, not the same line as the status header).
+  STATUS_BLOCK=$(smartctl -a "$DEVICE" | grep -A2 "Self-test execution status")
+
+  if echo "$STATUS_BLOCK" | grep -q "in progress"; then
+    SEEN_IN_PROGRESS=1
+    REMAINING=$(echo "$STATUS_BLOCK" | grep -o '[0-9]\{1,3\}% of test remaining' | head -1 | sed 's/%.*//')
     if [ -n "$REMAINING" ]; then
         PROGRESS=$((100 - REMAINING))
         if [ -n "$ESTIMATED_MIN" ]; then
@@ -45,21 +63,53 @@ while true; do
     else
         echo "Test in progress on $DEVICE, progress percentage not yet available."
     fi
-  elif echo "$STATUS_LINE" | grep -q "completed without error"; then
-    echo "Test on $DEVICE completed successfully."
-    break
-  elif echo "$STATUS_LINE" | grep -q "completed with read error"; then
-    echo "Test on $DEVICE completed with read error."
-    break
-  elif echo "$STATUS_LINE" | grep -q "completed with write error"; then
-    echo "Test on $DEVICE completed with write error."
-    break
-  elif echo "$STATUS_LINE" | grep -q "aborted by host"; then
+  elif echo "$STATUS_BLOCK" | grep -q "aborted"; then
     echo "Test on $DEVICE was aborted by the host."
     break
-  else
-    echo "Test on $DEVICE finished or is in an unknown state. Status: $STATUS_LINE"
+  elif [ "$SEEN_IN_PROGRESS" -eq 1 ]; then
+    # The test was previously in progress and now it's not — it completed.
+    if echo "$STATUS_BLOCK" | grep -q "completed"; then
+      if echo "$STATUS_BLOCK" | grep -q "without error"; then
+          echo "Test on $DEVICE completed successfully."
+      elif echo "$STATUS_BLOCK" | grep -q "read error"; then
+          echo "Test on $DEVICE completed with read error."
+      elif echo "$STATUS_BLOCK" | grep -q "write error"; then
+          echo "Test on $DEVICE completed with write error."
+      else
+          echo "Test on $DEVICE completed (status: $(echo "$STATUS_BLOCK" | head -1))."
+      fi
+    else
+      echo "Test on $DEVICE finished. Status: $(echo "$STATUS_BLOCK" | head -1)"
+    fi
     break
+  else
+    # Haven't seen "in progress" yet. The test may not have registered yet,
+    # OR it may have completed very quickly (common for short tests on SSDs).
+    # Check the self-test log for a new entry.
+    CURRENT_LOG_COUNT=$(smartctl -l selftest "$DEVICE" 2>&1 | grep -c '^#')
+    if [ "$CURRENT_LOG_COUNT" -gt "$INITIAL_LOG_COUNT" ]; then
+      # A new log entry appeared — the test completed before we saw progress.
+      LATEST_ENTRY=$(smartctl -l selftest "$DEVICE" 2>&1 | grep '^#' | head -1)
+      if echo "$LATEST_ENTRY" | grep -q "without error"; then
+          echo "Test on $DEVICE completed successfully."
+      elif echo "$LATEST_ENTRY" | grep -q "read error"; then
+          echo "Test on $DEVICE completed with read error."
+      elif echo "$LATEST_ENTRY" | grep -q "write error"; then
+          echo "Test on $DEVICE completed with write error."
+      elif echo "$LATEST_ENTRY" | grep -q "aborted"; then
+          echo "Test on $DEVICE was aborted by the host."
+      else
+          echo "Test on $DEVICE completed. Log entry: $LATEST_ENTRY"
+      fi
+      break
+    fi
+
+    WAIT_RETRIES=$((WAIT_RETRIES + 1))
+    if [ "$WAIT_RETRIES" -ge "$MAX_WAIT_RETRIES" ]; then
+      echo "Test on $DEVICE did not register after $((MAX_WAIT_RETRIES * 30))s. It may have completed or failed to start. Check the self-test log manually."
+      break
+    fi
+    echo "Waiting for test to register on $DEVICE..."
   fi
 
   sleep 30 # Check every 30 seconds
