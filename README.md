@@ -181,7 +181,7 @@ For bare, air-gapped Linux hosts with no desktop environment, an optional Firefo
 docker compose --profile kiosk up -d --build
 ```
 
-Switch to tty2 with `Ctrl+Alt+F2` (or the container runs `chvt 2` automatically). See [`docs/firefox-kiosk.md`](../docs/firefox-kiosk.md) for details.
+Switch to tty2 with `Ctrl+Alt+F2` (or the container runs `chvt 2` automatically). 
 
 ---
 
