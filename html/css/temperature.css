@@ -1,0 +1,12 @@
+/* html/css/temperature.css */
+
+/* Thermal sensor grid rendered by js/temperature.js */
+.thermal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+.thermal-card { background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border-color, rgba(255,255,255,0.08)); border-radius: 12px; padding: 16px; }
+.thermal-card .zone-id { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+.thermal-card .zone-name { font-size: 15px; font-weight: bold; color: var(--text-main); margin: 4px 0; word-break: break-word; }
+.thermal-card .zone-temp { font-size: 28px; font-weight: bold; color: var(--accent-blue); transition: color 0.3s ease; }
+.thermal-card .zone-temp.hot { color: var(--accent-red); }
+.thermal-card .zone-temp.warn { color: #f59e0b; }
+.thermal-card .zone-temp.na { color: var(--text-muted); font-size: 20px; }
+.thermal-note { color: var(--text-muted); font-size: 13px; margin-top: 8px; }

@@ -59,6 +59,91 @@
 .modal-drive-item input[type="text"]:focus,
 .modal-drive-item select:focus { border-color: var(--primary); outline: none; }
 
+/* --- Mode Switch Notice --- */
+.shred-status-notice {
+    padding: 10px 12px;
+    margin-bottom: 15px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+
+/* --- Modal Bulk Assignment Toolbar --- */
+.modal-bulk-toolbar {
+    margin: 5px 25px 0 25px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+.modal-bulk-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.modal-bulk-selectall {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.modal-bulk-selectall input { accent-color: var(--primary); cursor: pointer; }
+.modal-bulk-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 140px;
+}
+.modal-bulk-field > label { font-size: 11px; color: var(--text-muted); }
+.modal-bulk-field input[type="text"] {
+    padding: 6px 10px;
+    font-size: 12px;
+    background: #0f172a;
+    color: white;
+    border: 1px solid #334155;
+    border-radius: 4px;
+}
+.modal-bulk-field .custom-select-wrapper { margin-bottom: 0; }
+.modal-bulk-field .custom-select-trigger { padding: 6px 10px; font-size: 12px; }
+.modal-bulk-actions { display: flex; gap: 8px; padding-bottom: 2px; }
+.modal-bulk-actions button {
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary);
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.modal-bulk-actions button:hover { background: rgba(59, 130, 246, 0.3); color: white; }
+.modal-bulk-drives {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.modal-bulk-drive {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.modal-bulk-drive input { accent-color: var(--primary); cursor: pointer; }
+
 /* --- Wiping Pulse Animation --- */
 @keyframes pulse-border {
     0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }

@@ -247,7 +247,7 @@ async function showParsedSmartDataModal(driveName) {
 
 function renderSmartTable(data) {
     if (!data || !data.attributes || data.attributes.length === 0) {
-        let health = data.health || "Not Supported";
+        let health = (data && data.health) || "Not Supported";
         return `<p>Overall Health: ${health}. No detailed attributes found or S.M.A.R.T. is not supported.</p>`;
     }
 
@@ -262,10 +262,11 @@ function renderSmartTable(data) {
     table += '</tr></thead><tbody>';
 
     data.attributes.forEach(attr => {
+        const statusLower = String(attr.status || '').toLowerCase();
         let statusClass = 'status-ok';
-        if (attr.status === 'failing') {
+        if (statusLower === 'failing' || statusLower === 'fail') {
             statusClass = 'status-failing';
-        } else if (attr.status === 'pre-fail') {
+        } else if (statusLower === 'pre-fail' || statusLower === 'warn') {
             statusClass = 'status-pre-fail';
         }
 

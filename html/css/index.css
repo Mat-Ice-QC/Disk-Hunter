@@ -92,6 +92,21 @@
     box-sizing: border-box;
 }
 
+/* Custom drive cover image served by /api/images/drives */
+.drive-cover-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 5;
+}
+
+.drive-cover-img.drive-cover-pending {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: none;
+}
+
 /* LED Indicator Animation */
 .led-glow {
     animation: led-blink 2s infinite alternate ease-in-out;
@@ -190,6 +205,12 @@
     color: #c084fc;
     border-color: rgba(192, 132, 252, 0.25);
     background: rgba(192, 132, 252, 0.05);
+}
+
+.badge.form-factor {
+    color: #22d3ee;
+    border-color: rgba(34, 211, 238, 0.25);
+    background: rgba(34, 211, 238, 0.05);
 }
 
 .badge.read-only {
@@ -320,6 +341,12 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.no-partitions-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
 }
 
 .partition-container {

@@ -4,12 +4,23 @@ import json
 import re
 import httpx
 import time
-import os
+from .drive_info import resolve_physical_disk, get_drive_info, get_form_factor
 
 smart_attributes_cache = {}  # maps disk_name -> (timestamp, parsed_data)
 CACHE_DURATION = 30.0  # seconds
 
 router = APIRouter()
+
+def _smart_int(value: str) -> int | None:
+    """Extracts the leading integer from a raw smart value like '0x00', '100%' or '1,234 [632 GB]'."""
+    parts = value.split()
+    if not parts:
+        return None
+    token = parts[0].replace(",", "").rstrip("%")
+    try:
+        return int(token, 16) if token.lower().startswith("0x") else int(token)
+    except ValueError:
+        return None
 
 def parse_smart_attributes(output: str) -> dict:
     """
@@ -27,12 +38,17 @@ def parse_smart_attributes(output: str) -> dict:
     
     attributes = {}
     health_match = re.search(r"SMART overall-health self-assessment test result: (.+)", output)
-    attributes['health'] = health_match.group(1).strip() if health_match else "Unknown"
+    if health_match:
+        attributes['health'] = health_match.group(1).strip()
+    else:
+        # SAS/SCSI drives report health on a different line
+        scsi_health_match = re.search(r"SMART Health Status:\s+(.+)", output)
+        attributes['health'] = scsi_health_match.group(1).strip() if scsi_health_match else "Unknown"
 
-    reallocated_match = re.search(r"Reallocated_Sector_Ct\s+.*\s+(\d+)", output)
+    reallocated_match = re.search(r"Reallocated_Sector_Ct[^\n]*\s(\d+)[ \t]*$", output, re.MULTILINE)
     attributes['reallocated_sectors'] = int(reallocated_match.group(1)) if reallocated_match else 0
 
-    pending_match = re.search(r"Current_Pending_Sector\s+.*\s+(\d+)", output)
+    pending_match = re.search(r"Current_Pending_Sector[^\n]*\s(\d+)[ \t]*$", output, re.MULTILINE)
     attributes['pending_sectors'] = int(pending_match.group(1)) if pending_match else 0
     
     # Improved attribute parsing
@@ -82,44 +98,54 @@ def parse_smart_attributes(output: str) -> dict:
                     })
                 except (ValueError, IndexError):
                     continue # Ignore malformed lines
-    return attributes
 
-def resolve_physical_disk(dev_path: str) -> str | None:
-    """
-    Recursively follows device-mapper/LVM paths and partition numbers
-    to resolve the final underlying physical disk name (e.g. /dev/sda).
-    """
-    if not dev_path or not dev_path.startswith("/dev/"):
-        return None
-    
-    # Resolve any symlinks (like /dev/mapper/vg-root -> /dev/dm-0)
-    real_path = os.path.realpath(dev_path)
-    dev_name = real_path.split("/")[-1]
-    
-    # Check LVM/LUKS virtual block device slaves recursively
-    slaves_dir = f"/sys/class/block/{dev_name}/slaves"
-    if os.path.exists(slaves_dir):
-        try:
-            slaves = os.listdir(slaves_dir)
-            if slaves:
-                resolved = resolve_physical_disk(f"/dev/{slaves[0]}")
-                if resolved:
-                    return resolved
-        except Exception:
-            pass
-            
-    # Remove partition suffix (e.g. nvme0n1p2 -> nvme0n1, sda1 -> sda)
-    # Check NVMe format first: nvme[number]n[number]p[number]
-    nvme_part_match = re.match(r"^(nvme\d+n\d+)p\d+$", dev_name)
-    if nvme_part_match:
-        return f"/dev/{nvme_part_match.group(1)}"
-        
-    # Check standard partitions: sd[letter][number]
-    std_part_match = re.match(r"^([a-zA-Z]+)\d+$", dev_name)
-    if std_part_match:
-        return f"/dev/{std_part_match.group(1)}"
-        
-    return real_path
+    # NVMe SMART/Health Information block (NVMe Log 0x02)
+    nvme_section = False
+    nvme_entries = []
+    for line in output.splitlines():
+        if line.startswith("SMART/Health Information"):
+            nvme_section = True
+            continue
+        if not nvme_section:
+            continue
+        entry_match = re.match(r"^([^:]+):\s*(\S.*)$", line)
+        if not entry_match:
+            nvme_section = False
+            continue
+        nvme_entries.append((entry_match.group(1).strip(), entry_match.group(2).strip()))
+
+    if nvme_entries:
+        spare_threshold = None
+        for entry_name, entry_raw in nvme_entries:
+            if entry_name == "Available Spare Threshold":
+                spare_threshold = _smart_int(entry_raw)
+
+        for idx, (entry_name, entry_raw) in enumerate(nvme_entries, start=1):
+            entry_num = _smart_int(entry_raw)
+            status = "OK"
+            if entry_name.startswith("Critical Warning") and entry_num is not None and entry_num != 0:
+                status = "FAIL"
+            elif entry_name == "Media and Data Integrity Errors" and entry_num is not None and entry_num > 0:
+                status = "WARN"
+            elif entry_name == "Available Spare" and spare_threshold is not None and entry_num is not None and entry_num < spare_threshold:
+                status = "FAIL"
+            elif entry_name == "Percentage Used" and entry_num is not None and entry_num >= 90:
+                status = "WARN"
+
+            attributes['attributes'].append({
+                "id": idx,
+                "name": entry_name,
+                "flag": "-",
+                "value": entry_raw,
+                "worst": "-",
+                "thresh": "-",
+                "type": "-",
+                "updated": "-",
+                "when_failed": "-",
+                "raw_value": entry_raw,
+                "status": status
+            })
+    return attributes
 
 def validate_drive_path(drive_path: str) -> tuple[bool, str]:
     """Validates that a drive path is safe for destructive operations.
@@ -172,6 +198,19 @@ def get_root_disk() -> str | None:
         pass
     return None
 
+def get_blkid_pttype(disk_path: str) -> str:
+    """Returns the partition table type reported by blkid, or empty on error."""
+    try:
+        res = subprocess.run(
+            ["blkid", "-p", "-o", "value", "-s", "PTTYPE", disk_path],
+            capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
 @router.get("/api/disks")
 async def get_disks(exclude_root: bool = False):
     """
@@ -198,6 +237,22 @@ async def get_disks(exclude_root: bool = False):
                 d['is_root'] = True
             else:
                 d['is_root'] = False
+
+            # Fill serial/model/tran from udev/sysfs and pttype from blkid when lsblk gave nothing
+            disk_path = d.get('path') or f"/dev/{d.get('name', '')}"
+            if not d.get('serial') or not d.get('model') or not d.get('tran'):
+                info = get_drive_info(disk_path)
+                if not d.get('serial') and info.get('serial'):
+                    d['serial'] = info['serial']
+                if not d.get('model') and info.get('model'):
+                    d['model'] = info['model']
+                if not d.get('tran') and info.get('tran'):
+                    d['tran'] = info['tran']
+            if not d.get('pttype'):
+                pttype = get_blkid_pttype(disk_path)
+                if pttype:
+                    d['pttype'] = pttype
+            d['form_factor'] = get_form_factor(d.get('model') or '', d.get('tran') or '')
 
         if exclude_root:
             disks = [d for d in disks if not d.get('is_root', False)]

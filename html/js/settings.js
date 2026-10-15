@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    if (localStorage.getItem('disk_hunter_pdf') === 'true') pdfToggle.checked = true;
     if (localStorage.getItem('disk_hunter_debug') === 'true') debugToggle.checked = true;
     if (localStorage.getItem('potatoMode') === 'true') potatoModeToggle.checked = true;
     
@@ -40,7 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         protectRootToggle.checked = false;
     }
 
-    pdfToggle.addEventListener('change', (e) => localStorage.setItem('disk_hunter_pdf', e.target.checked));
+    pdfToggle.addEventListener('change', async (e) => {
+        // localStorage is kept as an offline cache; the server is the source of truth
+        localStorage.setItem('disk_hunter_pdf', e.target.checked);
+        await savePdfSettingToServer(e.target.checked);
+    });
     debugToggle.addEventListener('change', (e) => localStorage.setItem('disk_hunter_debug', e.target.checked));
     protectRootToggle.addEventListener('change', (e) => localStorage.setItem('disk_hunter_protect_root', e.target.checked));
 
@@ -52,6 +55,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.body.classList.remove('potato-mode');
         }
     });
+
+    // --- Generate Certificate setting (server-side persistence + localStorage cache) ---
+    async function savePdfSettingToServer(value, showStatus = true) {
+        const status = document.getElementById('pdf-status');
+        try {
+            const res = await fetch('/api/settings/app', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ generate_pdf: value })
+            });
+            const data = await res.json();
+            if (showStatus && status) {
+                status.innerHTML = `<span style="color: ${data.status === 'success' ? 'var(--accent-green)' : 'red'};">${data.message}</span>`;
+            }
+            return data.status === 'success';
+        } catch (e) {
+            if (showStatus && status) {
+                status.innerHTML = `<span style="color: red;">Network error. Kept as a local cache only.</span>`;
+            }
+            return false;
+        }
+    }
+
+    try {
+        const res = await fetch('/api/settings/app');
+        const data = await res.json();
+        if (data.status === 'success' && data.settings) {
+            if (!data.settings.generate_pdf_set) {
+                // One-time migration: push the cached local value to the server
+                const cached = localStorage.getItem('disk_hunter_pdf');
+                if (cached !== null) {
+                    pdfToggle.checked = cached === 'true';
+                    localStorage.setItem('disk_hunter_pdf', pdfToggle.checked);
+                    await savePdfSettingToServer(pdfToggle.checked, false);
+                } else {
+                    pdfToggle.checked = data.settings.generate_pdf === true;
+                }
+            } else {
+                pdfToggle.checked = data.settings.generate_pdf === true;
+                localStorage.setItem('disk_hunter_pdf', pdfToggle.checked);
+            }
+        } else {
+            pdfToggle.checked = localStorage.getItem('disk_hunter_pdf') === 'true';
+        }
+    } catch (e) {
+        pdfToggle.checked = localStorage.getItem('disk_hunter_pdf') === 'true';
+    }
 
     // --- Config Export/Import ---
     document.getElementById('btn-export-config').addEventListener('click', () => {

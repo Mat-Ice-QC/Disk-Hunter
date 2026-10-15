@@ -1,3 +1,5 @@
+let currentHistory = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchHistory();
 
@@ -8,16 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnExport) {
         btnExport.addEventListener('click', exportToCSV);
     }
-
-    const btnCloseDetail = document.getElementById('btn-log-detail-close');
-    if (btnCloseDetail) {
-        btnCloseDetail.addEventListener('click', () => document.getElementById('log-detail-modal').classList.remove('active'));
-    }
 });
 
 async function fetchHistory() {
     const tbody = document.getElementById('history-body');
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
     
     try {
         const response = await fetch('/api/partition-history');
@@ -26,64 +23,43 @@ async function fetchHistory() {
         if (data.status === 'success') {
             renderHistory(data.history);
         } else {
-            tbody.innerHTML = `<tr><td colspan="8" style="color: var(--accent-red); text-align: center;">Error: ${data.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Error: ${HistoryCommon.escapeHtml(data.message)}</td></tr>`;
         }
     } catch (error) {
         console.error("History fetch error:", error);
-        tbody.innerHTML = '<tr><td colspan="8" style="color: var(--accent-red); text-align: center;">Failed to load history due to a network error.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Failed to load history due to a network error.</td></tr>';
     }
 }
 
 function renderHistory(history) {
     const tbody = document.getElementById('history-body');
     tbody.innerHTML = '';
+    currentHistory = history || [];
     
-    if (!history || history.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No partition history found.</td></tr>';
+    if (currentHistory.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No partition history found.</td></tr>';
         return;
     }
     
-    history.forEach((entry, index) => {
-        let statusColor = "var(--text-main)";
-        if (entry.status === 'success') statusColor = "var(--accent-green)";
-        if (entry.status === 'error') statusColor = "var(--accent-red)";
+    currentHistory.forEach(entry => {
+        const paramsStr = entry.params && Array.isArray(entry.params) ? entry.params.join(', ') : 'None';
+        const details = [
+            'Action: ' + (entry.action || 'N/A').toUpperCase(),
+            'Params: ' + paramsStr
+        ];
+
+        // Partition entries carry the worker output inline; no per-entry log endpoint
+        const options = {
+            title: 'Log Details',
+            details: details
+        };
 
         const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        tr.title = 'Click to view the command and worker output';
-        
-        const paramsStr = entry.params && Array.isArray(entry.params) ? entry.params.join(', ') : 'None';
+        tr.innerHTML = HistoryCommon.renderLogHeader(entry, { details: details });
+        HistoryCommon.makeRowClickable(tr, entry, options);
 
-        tr.innerHTML = `
-            <td style="white-space: nowrap;">${new Date(entry.timestamp).toLocaleString()}</td>
-            <td style="color: var(--text-main); font-weight: bold;">${entry.event}</td>
-            <td>${entry.drive || 'N/A'}</td>
-            <td><code>${entry.serial || 'N/A'}</code></td>
-            <td style="text-transform: uppercase; font-size: 12px; font-weight: bold; color: var(--primary);">${entry.action || 'N/A'}</td>
-            <td><code>${paramsStr}</code></td>
-            <td>${entry.username || 'Unknown'}</td>
-            <td style="color: ${statusColor}; font-weight: bold; text-transform: uppercase;">${entry.status}</td>
-        `;
-
-        tr.addEventListener('click', () => showLogDetail(entry));
         tbody.appendChild(tr);
     });
-}
-
-function showLogDetail(entry) {
-    const modal = document.getElementById('log-detail-modal');
-    if (!modal) return;
-    document.getElementById('log-detail-drive').innerText = entry.drive || 'N/A';
-    document.getElementById('log-detail-serial').innerText = entry.serial || 'N/A';
-    document.getElementById('log-detail-event').innerText = entry.event || 'N/A';
-    const statusEl = document.getElementById('log-detail-status');
-    if (statusEl) {
-        statusEl.innerText = entry.status || 'N/A';
-        statusEl.style.color = entry.status === 'success' ? 'var(--accent-green)' : (entry.status === 'error' ? 'var(--accent-red)' : 'var(--text-main)');
-    }
-    document.getElementById('log-detail-command').textContent = entry.command || 'N/A';
-    document.getElementById('log-detail-output').textContent = entry.output || 'N/A';
-    modal.classList.add('active');
 }
 
 function clearHistory() {
@@ -104,22 +80,25 @@ function clearHistory() {
 }
 
 function exportToCSV() {
-    const tbody = document.getElementById('history-body');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    if (rows.length === 0 || rows[0].innerText.includes('No partition history found') || rows[0].innerText.includes('Loading...')) {
+    if (currentHistory.length === 0) {
         customAlert('No history data available to export.');
         return;
     }
 
     let csvContent = "Date & Time,Event,Drive,S/N,Action,Parameters,User (IP),Status\n";
 
-    rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if (cols.length === 8) {
-            const rowData = Array.from(cols).map(col => `"${String(col.innerText).replace(/"/g, '""')}"`);
-            csvContent += rowData.join(",") + "\n";
-        }
+    currentHistory.forEach(entry => {
+        const rowData = [
+            HistoryCommon.formatTimestamp(entry.timestamp),
+            entry.event || 'N/A',
+            entry.drive || 'N/A',
+            entry.serial || 'N/A',
+            entry.action || 'N/A',
+            entry.params && Array.isArray(entry.params) ? entry.params.join(', ') : 'None',
+            entry.username || 'N/A',
+            entry.status || 'N/A'
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`);
+        csvContent += rowData.join(",") + "\n";
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

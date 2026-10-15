@@ -59,16 +59,19 @@ def get_thermal_zones() -> list:
 def get_temperatures() -> list:
     """Return the list of temperature readings for the devices selected in
     app_settings. Returns an empty list if collection is disabled or no
-    devices are configured (falls back to thermal_zone0 for backward
-    compatibility when nothing is configured yet)."""
+    devices are configured (falls back to the first available thermal zone
+    for backward compatibility when nothing is configured yet)."""
     settings = _read_app_settings()
     if settings.get("collect_temperature", True) is False:
         return []
     selected = settings.get("thermal_devices", [])
     zones = get_thermal_zones()
     if not selected:
-        # Backward-compatible default: thermal_zone0 only
-        selected = ["thermal_zone0"]
+        # Backward-compatible default: first available thermal zone only
+        if zones:
+            selected = [zones[0]["id"]]
+        else:
+            return []
     by_id = {z["id"]: z for z in zones}
     result = []
     for dev_id in selected:

@@ -25,6 +25,8 @@
                         <button class="shred-ui-tab" data-shred-tab="nvme" data-i18n="shred_tab_nvme">NVMe Secure Erase</button>
                     </div>
 
+                    <div id="shred-status-notice" class="shred-status-notice" style="display: none;"></div>
+
                     <div class="config-box">
                         <label class="shred-label"><span data-i18n="wipe_algorithm">Wipe Algorithm</span><span class="help-indicator" data-tooltip="<strong>Sanitization Standard</strong><br>Select from multiple standard shredding protocols including DoD 5220.22-M, Gutmann, or direct hardware Secure Erase.">?</span></label>
                         <div id="wipe-method-list" class="wipe-method-list"></div>
@@ -67,6 +69,7 @@
                     <button id="btn-view-detailed" class="modal-view-btn active" data-i18n="view_detailed">Detailed</button>
                     <button id="btn-view-simple" class="modal-view-btn" data-i18n="view_simple">Simple List</button>
                 </div>
+                <div id="modal-bulk-toolbar-container"></div>
                 <div class="modal-drives" id="modal-drive-list"></div>
                 <p class="modal-text-muted" style="padding: 0 25px 15px 25px;">A dedicated, isolated Docker container will be spun up for each drive. This process cannot be paused or reversed once started.</p>
                 <div class="modal-actions">

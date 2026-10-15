@@ -5,6 +5,7 @@ import asyncio
 import uuid
 import httpx
 import re
+import shlex
 from typing import List, Dict
 from .config import ISO_DIR
 from .disks import validate_drive_path
@@ -38,7 +39,8 @@ def list_isos():
                 })
     return isos
 
-async def download_file_task(task_id: str, url: str, filepath: str):
+async def download_file_task(task_id: str, url: str, filepath: str, ip: str):
+    filename = os.path.basename(filepath)
     try:
         download_tasks[task_id]["status"] = "downloading"
         async with httpx.AsyncClient(follow_redirects=True) as client:
@@ -47,21 +49,44 @@ async def download_file_task(task_id: str, url: str, filepath: str):
                 total = int(response.headers.get("Content-Length", 0))
                 download_tasks[task_id]["total_bytes"] = total
                 download_tasks[task_id]["downloaded_bytes"] = 0
-                
+
                 with open(filepath, "wb") as f:
                     async for chunk in response.aiter_bytes(chunk_size=8192 * 10):
                         f.write(chunk)
                         download_tasks[task_id]["downloaded_bytes"] += len(chunk)
                         if total > 0:
                             download_tasks[task_id]["progress"] = round((download_tasks[task_id]["downloaded_bytes"] / total) * 100, 2)
-        
+
         download_tasks[task_id]["status"] = "completed"
         download_tasks[task_id]["progress"] = 100
+        append_iso_history({
+            "timestamp": get_local_time(),
+            "event": f"ISO download of {filename}",
+            "username": ip,
+            "drive": "-",
+            "status": "completed",
+            "command": f"HTTP GET {url} -> {filepath} (httpx stream)",
+            "filename": filename,
+            "url": url,
+            "size_bytes": download_tasks[task_id]["downloaded_bytes"]
+        })
     except Exception as e:
         download_tasks[task_id]["status"] = "error"
         download_tasks[task_id]["error"] = str(e)
         if os.path.exists(filepath):
             os.remove(filepath)
+        append_iso_history({
+            "timestamp": get_local_time(),
+            "event": f"ISO download of {filename}",
+            "username": ip,
+            "drive": "-",
+            "status": "failed",
+            "command": f"HTTP GET {url} -> {filepath} (httpx stream)",
+            "filename": filename,
+            "url": url,
+            "size_bytes": download_tasks[task_id].get("downloaded_bytes", 0),
+            "output": str(e)
+        })
 
 @router.post("/download")
 def start_download(req: DownloadRequest, background_tasks: BackgroundTasks, http_request: Request):
@@ -84,12 +109,16 @@ def start_download(req: DownloadRequest, background_tasks: BackgroundTasks, http
     if not safe_filename or safe_filename in [".", ".."]:
         debug_logs.append(f"Error: Invalid filename: {req.filename}")
         raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not (safe_filename.lower().endswith(".iso") or safe_filename.lower().endswith(".img")):
+        safe_filename = safe_filename + ".iso"
+
     filepath = os.path.join(ISO_DIR, safe_filename)
-    
+
     if os.path.exists(filepath):
         debug_logs.append(f"Error: File already exists at {filepath}")
         raise HTTPException(status_code=400, detail="File already exists")
-        
+
     download_tasks[task_id] = {
         "status": "pending",
         "progress": 0,
@@ -98,10 +127,10 @@ def start_download(req: DownloadRequest, background_tasks: BackgroundTasks, http
         "total_bytes": 0,
         "downloaded_bytes": 0
     }
-    
+
     debug_logs.append(f"Spawning async download task for URL {req.url} to {filepath}")
-    background_tasks.add_task(download_file_task, task_id, req.url, filepath)
-    return {"status": "success", "task_id": task_id, "debug": debug_logs}
+    background_tasks.add_task(download_file_task, task_id, req.url, filepath, ip)
+    return {"status": "success", "task_id": task_id, "debug": debug_logs, "filename": safe_filename}
 
 @router.get("/download-status")
 def get_download_status():
@@ -151,7 +180,10 @@ async def write_iso_task(task_id: str, filename: str, device: str, ip: str, cont
                 "timestamp": end_time,
                 "event": f"ISO write of {filename} to {device}",
                 "username": ip,
-                "status": "completed"
+                "drive": f"/dev/{device}",
+                "status": "completed",
+                "command": shlex.join(cmd),
+                "filename": filename
             })
         else:
             write_tasks[task_id]["status"] = "error"
@@ -160,9 +192,12 @@ async def write_iso_task(task_id: str, filename: str, device: str, ip: str, cont
                 "timestamp": end_time,
                 "event": f"ISO write of {filename} to {device}",
                 "username": ip,
-                "status": "failed"
+                "drive": f"/dev/{device}",
+                "status": "failed",
+                "command": shlex.join(cmd),
+                "filename": filename
             })
-            
+
     except Exception as e:
         write_tasks[task_id]["status"] = "error"
         write_tasks[task_id]["error"] = str(e)
@@ -171,7 +206,10 @@ async def write_iso_task(task_id: str, filename: str, device: str, ip: str, cont
             "timestamp": end_time,
             "event": f"ISO write of {filename} to {device}",
             "username": ip,
-            "status": "failed"
+            "drive": f"/dev/{device}",
+            "status": "failed",
+            "command": shlex.join(cmd),
+            "filename": filename
         })
     finally:
         # Cleanup container in background

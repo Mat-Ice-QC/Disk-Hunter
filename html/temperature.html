@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/history.css">
     <link rel="stylesheet" href="css/settings.css">
+    <link rel="stylesheet" href="css/temperature.css">
     <style>
         .thermal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
         .thermal-card { background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border-color, rgba(255,255,255,0.08)); border-radius: 12px; padding: 16px; }
@@ -37,7 +38,7 @@
                         <a href="settings.html" class="btn-action">Configure</a>
                     </div>
                 </div>
-                <p class="thermal-note">Auto-refreshing every 3 seconds.</p>
+                <p class="thermal-note">Auto-refreshing every 5 seconds.</p>
                 <div id="thermal-grid" class="thermal-grid">
                     <p style="color: var(--text-muted);">Loading sensors...</p>
                 </div>

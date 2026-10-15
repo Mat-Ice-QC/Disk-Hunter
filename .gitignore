@@ -25,3 +25,30 @@ data/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# OpenCode / agent runtime
+.opencode/
+.opencode.json
+.mcp.json
+.cursor/
+.codex/
+.pi/
+.claude/
+
+# OpenKnowledge project metadata
+.ok/
+.okignore
+
+# Stray root-level scratch files from prior agent runs
+/*.py
+/agent_*.py
+/!backend/**/*.py
+!/smart-provider/**/*.py
+!/workers/**/*.py
+!/backend/docker-entrypoint.sh
+/*.json
+/!html/locales.json
+/!backend/requirements.txt
+/!smart-provider/requirements.txt
+/git_files.txt
+

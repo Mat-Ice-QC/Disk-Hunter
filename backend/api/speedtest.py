@@ -11,6 +11,7 @@ from .history import append_speedtest_history
 from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import get_root_disk, resolve_physical_disk
+from .drive_info import get_drive_serial
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/speedtest/logs/python"
@@ -87,13 +88,16 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, check=False)
         
         logging.info(f"Starting Speed Test for {drive} (container: {container_name})")
+        cmd_out = []
         success = run_container(
             name=container_name,
             image="disk-hunter-speedtest",
             args=[drive, test_type, size],
             privileged=True,
-            devices=[f"{drive}:{drive}"]
+            devices=[f"{drive}:{drive}"],
+            cmd_out=cmd_out
         )
+        command = cmd_out[0] if cmd_out else ""
         if not success:
             logging.error(f"Docker Error starting Speed Test for {drive}")
             break
@@ -103,7 +107,9 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
             "event": f"Started Speed test ({test_type} {size}) on {drive}",
             "username": ip,
             "serial": serial,
+            "drive": drive,
             "test_type": f"{test_type} ({size})",
+            "command": command,
             "status": "started",
             "container_name": container_name
         })
@@ -141,7 +147,9 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
             "event": f"Speed test ({test_type} ({size})) {status_text} on {drive}",
             "username": ip,
             "serial": serial,
+            "drive": drive,
             "test_type": f"{test_type} ({size})",
+            "command": command,
             "status": status_text,
             "read_speed": read_speed,
             "write_speed": write_speed,
@@ -243,20 +251,9 @@ def start_speedtest(request: SpeedtestRequest, background_tasks: BackgroundTasks
                 logging.info(f"Speed test already running for {drive}, skipping.")
                 continue
 
-            serial = "UNKNOWN"
-            try:
-                # To get serial of a partition like /dev/sda1, we need to query its parent disk /dev/sda
-                parent_drive = re.sub(r'\d+$', '', drive)
-                s_cmd = ["lsblk", "-n", "-o", "SERIAL", parent_drive]
-                debug_logs.append(f"Querying parent disk {parent_drive} serial: {' '.join(s_cmd)}")
-                s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                if s_res.returncode == 0 and s_res.stdout.strip():
-                    serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', s_res.stdout.strip())
-                    debug_logs.append(f"Found parent disk serial: {serial}")
-                else:
-                    debug_logs.append(f"Parent lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
-            except Exception as e:
-                debug_logs.append(f"Exception running parent disk lsblk command: {str(e)}")
+            serial = get_drive_serial(drive)
+            serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', serial)
+            debug_logs.append(f"Resolved serial for {drive}: {serial}")
             
             # Log container command plan
             for size in drive_sizes:

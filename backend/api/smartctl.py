@@ -10,6 +10,7 @@ from .history import append_smartctl_history
 from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import validate_drive_path
+from .drive_info import get_drive_serial
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/smartctl/logs/python"
@@ -96,8 +97,8 @@ def stop_smart_test(request: StopRequest):
         return {"status": "error", "message": str(e)}
 
 
-async def monitor_smart_test(container_name: str, drive: str, serial: str, test_type: str, start_time: str, ip: str):
-    await wait_for_container(container_name)
+async def monitor_smart_test(container_name: str, drive: str, serial: str, test_type: str, start_time: str, ip: str, command: str):
+    exit_code = await wait_for_container(container_name)
     
     end_time = get_local_time()
     
@@ -107,7 +108,7 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
     
     # Get container logs
     save_container_logs(container_name, log_file)
-
+    
     status_text = "completed"
     with open(log_file, "r") as f:
         logs = f.read()
@@ -115,6 +116,10 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
             status_text = "failed"
         elif "aborted" in logs:
             status_text = "aborted"
+    if exit_code in ["137", "143"]:
+        status_text = "stopped"
+    elif exit_code != "0" and status_text == "completed":
+        status_text = "failed"
 
     logging.info(f"S.M.A.R.T. test {status_text} for {drive} (container: {container_name})")
 
@@ -123,7 +128,9 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
         "event": f"SMART test ({test_type}) {status_text} on {drive}",
         "username": ip,
         "serial": serial,
+        "drive": drive,
         "test_type": test_type,
+        "command": command,
         "status": status_text,
         "container_name": container_name
     })
@@ -194,18 +201,9 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
                 logging.info(f"S.M.A.R.T. test already running for {drive}, skipping.")
                 continue
 
-            serial = "UNKNOWN"
-            try:
-                s_cmd = ["lsblk", "-n", "-o", "SERIAL", drive]
-                debug_logs.append(f"Running command: {' '.join(s_cmd)}")
-                s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                if s_res.returncode == 0 and s_res.stdout.strip():
-                    serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', s_res.stdout.strip())
-                    debug_logs.append(f"Found serial for {drive}: {serial}")
-                else:
-                    debug_logs.append(f"lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
-            except Exception as e:
-                debug_logs.append(f"Exception running lsblk command for {drive}: {str(e)}")
+            serial = get_drive_serial(drive)
+            serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', serial)
+            debug_logs.append(f"Resolved serial for {drive}: {serial}")
             
             container_name = f"disk_hunter_smartctl_{drive_name}--{test_type}--{serial}"
 
@@ -215,14 +213,17 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
             subprocess.run(rm_cmd, capture_output=True, check=False)
 
             logging.info(f"Starting S.M.A.R.T. test for {drive} (container: {container_name})")
+            cmd_out = []
             success = run_container(
                 name=container_name,
                 image="disk-hunter-smartctl-test",
                 args=[drive, test_type],
                 privileged=True,
                 devices=[f"{drive}:{drive}"],
-                debug_list=debug_logs
+                debug_list=debug_logs,
+                cmd_out=cmd_out
             )
+            command = cmd_out[0] if cmd_out else ""
             if not success:
                 debug_logs.append(f"Failed to start container {container_name}")
                 logging.error(f"Docker Error starting S.M.A.R.T. test for {drive}")
@@ -231,11 +232,15 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
             append_smartctl_history({
                 "timestamp": start_time,
                 "event": f"Started SMART test ({test_type}) on {drive}",
+                "username": ip,
                 "serial": serial,
+                "drive": drive,
                 "test_type": test_type,
-                "status": "started"
+                "command": command,
+                "status": "started",
+                "container_name": container_name
             })
-            background_tasks.add_task(monitor_smart_test, container_name, drive, serial, test_type, start_time, ip)
+            background_tasks.add_task(monitor_smart_test, container_name, drive, serial, test_type, start_time, ip, command)
 
         return {"status": "success", "message": f"Started {test_type} test on selected drives.", "debug": debug_logs}
     except Exception as e:

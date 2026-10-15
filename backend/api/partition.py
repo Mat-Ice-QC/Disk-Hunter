@@ -6,22 +6,13 @@ from .models import PartitionActionRequest, BatchPartitionRequest, PreparePartit
 from .history import append_partition_history
 from .system import get_local_time, get_client_ip
 from .disks import validate_drive_path
+from .drive_info import get_drive_serial as resolve_drive_serial
 
 router = APIRouter()
 
 def get_drive_serial(drive: str) -> str:
     """Resolve the serial number of the physical disk backing a drive/partition path."""
-    try:
-        parent = re.sub(r'\d+$', '', drive)
-        nvme_match = re.match(r"^(nvme\d+n\d+)p\d+$", parent.split('/')[-1])
-        if nvme_match:
-            parent = f"/dev/{nvme_match.group(1)}"
-        s_res = subprocess.run(["lsblk", "-n", "-o", "SERIAL", parent], capture_output=True, text=True)
-        if s_res.returncode == 0 and s_res.stdout.strip():
-            return s_res.stdout.strip()
-    except Exception:
-        pass
-    return "N/A"
+    return resolve_drive_serial(drive, "N/A")
 
 def run_parted(drive: str, args: list[str], debug_list: list = None):
     cmd = ["parted", "-s", "-m", drive] + args
@@ -130,6 +121,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
         return {"status": "error", "message": err_msg, "debug": debug_logs}
 
     serial = get_drive_serial(req.drive)
+    command_str = ""
 
     try:
         debug_logs.append(f"Received PartitionActionRequest: drive={req.drive}, action={req.action}, params={req.params}")
@@ -157,9 +149,10 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                 mkfs_cmd[0] = "mkfs.vfat"
             elif fs_type == "ntfs":
                 mkfs_cmd.insert(1, "-f")
+            command_str = " ".join(mkfs_cmd)
                 
             try:
-                debug_logs.append(f"Running command: {' '.join(mkfs_cmd)}")
+                debug_logs.append(f"Running command: {command_str}")
                 res = subprocess.run(mkfs_cmd, capture_output=True, text=True, timeout=120)
                 debug_logs.append(f"Command exit code: {res.returncode}")
                 if res.stdout:
@@ -175,7 +168,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         "serial": serial,
                         "action": "format",
                         "params": req.params,
-                        "command": " ".join(mkfs_cmd),
+                        "command": command_str,
                         "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                         "username": ip,
                         "status": "error"
@@ -189,7 +182,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "serial": serial,
                     "action": "format",
                     "params": req.params,
-                    "command": " ".join(mkfs_cmd),
+                    "command": command_str,
                     "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                     "username": ip,
                     "status": "success"
@@ -204,7 +197,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "serial": serial,
                     "action": "format",
                     "params": req.params,
-                    "command": " ".join(mkfs_cmd),
+                    "command": command_str,
                     "output": "Command timed out after 120 seconds",
                     "username": ip,
                     "status": "error"
@@ -213,6 +206,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
             
         else:
             parted_cmd_str = " ".join(["parted", "-s", "-m", req.drive, req.action] + req.params)
+            command_str = parted_cmd_str
             res = run_parted(req.drive, [req.action] + req.params, debug_list=debug_logs)
             if res.returncode != 0:
                 err_msg = res.stderr.strip() or res.stdout.strip()
@@ -224,6 +218,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         end_s = f"{match.group(2)}s"
                         new_params = [req.params[0], start_s, end_s]
                         aligned_cmd_str = " ".join(["parted", "-s", "-m", req.drive, "mkpart"] + new_params)
+                        command_str = aligned_cmd_str
                         res2 = run_parted(req.drive, ["mkpart"] + new_params, debug_list=debug_logs)
                         if res2.returncode == 0:
                             append_partition_history({
@@ -277,7 +272,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
             "serial": serial,
             "action": req.action,
             "params": req.params,
-            "command": "",
+            "command": command_str,
             "output": str(e),
             "username": ip,
             "status": "error"

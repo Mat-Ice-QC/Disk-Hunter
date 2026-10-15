@@ -1,6 +1,8 @@
 /* html/js/index.js */
 
 let previousDisksHash = "";
+const loadedDriveImages = new Set();
+const failedDriveImages = new Set();
 try {
     window.smartStatusCache = JSON.parse(sessionStorage.getItem('dh_smart_cache')) || {};
 } catch (e) {
@@ -126,10 +128,10 @@ function getPartitionClass(fstype) {
 }
 
 function getInterfaceName(tran, name) {
-    if (tran === 'nvme') return 'PCIe NVMe';
+    if (tran === 'nvme') return 'NVMe';
     if (tran === 'sata') return 'SATA';
     if (tran === 'usb') return 'USB';
-    if (name.includes('nvme')) return 'PCIe NVMe'; 
+    if (name.includes('nvme')) return 'NVMe';
     return tran ? tran.toUpperCase() : 'Unknown';
 }
 
@@ -273,9 +275,17 @@ function renderDisks(disksInput) {
         const normalizedId = fullName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
         const serial = disk.serial ? disk.serial.trim() : 'N/A';
         const interfaceType = getInterfaceName(disk.tran, disk.name);
+        const hasChildren = Array.isArray(disk.children) && disk.children.length > 0;
         const pttypeMap = { 'dos': 'MBR', 'gpt': 'GPT' };
-        const pttypeRaw = disk.pttype ? disk.pttype.toLowerCase() : 'unknown';
-        const pttype = pttypeMap[pttypeRaw] || pttypeRaw.toUpperCase();
+        let pttype;
+        if (disk.pttype) {
+            const pttypeRaw = disk.pttype.toLowerCase();
+            pttype = pttypeMap[pttypeRaw] || pttypeRaw.toUpperCase();
+        } else if (!hasChildren) {
+            pttype = window.translate('no_table', 'NO TABLE');
+        } else {
+            pttype = 'UNKNOWN';
+        }
         const isReadOnly = disk.ro === 1 || disk.ro === true;
         
         // Choose initial LED class from cached SMART health if available
@@ -309,10 +319,12 @@ function renderDisks(disksInput) {
         }
 
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
+        const hasCustomImage = loadedDriveImages.has(normalizedId);
+        const noCustomImage = failedDriveImages.has(normalizedId);
+        const coverImgHtml = noCustomImage ? '' : `<img class="drive-cover-img${hasCustomImage ? '' : ' drive-cover-pending'}" src="${imageUrl}&custom_only=1" alt="Drive Cover Image">`;
         const imgElement = `
             <div class="drive-illustration" onclick="openImageLightbox('${imageUrl}', '${fullName.replace(/'/g, "\\'")}')" style="cursor: pointer;" title="Click to enlarge">
-                <img src="${imageUrl}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: contain; display: none; z-index: 5;" onload="this.style.display='block';" alt="Drive Cover Image">
-                ${driveSVG}
+                ${hasCustomImage ? coverImgHtml : driveSVG + coverImgHtml}
             </div>
         `;
 
@@ -325,6 +337,9 @@ function renderDisks(disksInput) {
             <span class="badge interface">${interfaceType}</span>
             <span class="badge ptable">${pttype}</span>
         `;
+        if (disk.form_factor) {
+            badgeHtml += `<span class="badge form-factor">${disk.form_factor}</span>`;
+        }
         if (isReadOnly) {
             badgeHtml += `<span class="badge read-only">${window.translate('read_only', 'Read-Only')}</span>`;
         }
@@ -431,13 +446,37 @@ function renderDisks(disksInput) {
 
             <div class="partition-section">
                 <h4>${window.translate('partitions_layout', 'Partitions & Layout')}</h4>
+                ${hasChildren ? `
                 <div class="partition-container">
                     <div class="partition-bar">
                         ${partitionHtml || '<div class="partition part-free" style="width: 100%;" data-tooltip="<strong>' + window.translate('unpartitioned', 'Unpartitioned') + '</strong><br>Size: ' + formatBytes(diskSize) + '">' + window.translate('unpartitioned', 'Unpartitioned') + '</div>'}
                     </div>
-                </div>
+                </div>` : `<p class="no-partitions-text">${window.translate('no_partitions', 'No partitions (unpartitioned / raw)')}</p>`}
             </div>
         `;
+
+        // Swap the default SVG illustration for a successfully loaded custom cover image
+        if (!hasCustomImage) {
+            const coverImg = card.querySelector('.drive-illustration img.drive-cover-img');
+            if (coverImg) {
+                const onCoverLoaded = () => {
+                    loadedDriveImages.add(normalizedId);
+                    const driveSvgEl = card.querySelector('.drive-svg');
+                    if (driveSvgEl) driveSvgEl.style.display = 'none';
+                    coverImg.classList.remove('drive-cover-pending');
+                };
+                const onCoverError = () => {
+                    failedDriveImages.add(normalizedId);
+                    coverImg.remove();
+                };
+                coverImg.addEventListener('load', onCoverLoaded);
+                coverImg.addEventListener('error', onCoverError);
+                if (coverImg.complete) {
+                    if (coverImg.naturalWidth > 0) onCoverLoaded();
+                    else onCoverError();
+                }
+            }
+        }
         container.appendChild(card);
 
         // Asynchronously fetch SMART details only if not already known from WS broadcast

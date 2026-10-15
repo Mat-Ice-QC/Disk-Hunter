@@ -22,6 +22,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Cached last-rendered HTML for the status containers. Skip DOM writes when
+// nothing changed. Keys map to per-task state snapshots so progress-only
+// updates can be applied in place.
+let lastDownloadHtml = '';
+let lastWriteHtml = '';
+let lastDownloadStates = {};
+let lastWriteStates = {};
+
+function ensureIsoExtension(name) {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.iso') || lower.endsWith('.img')) return name;
+    return name + '.iso';
+}
+
 async function loadIsos() {
     try {
         const response = await fetch('/api/iso/list');
@@ -53,13 +67,16 @@ async function loadDisks() {
 
 async function startDownload() {
     const url = document.getElementById('iso-url').value;
-    const filename = document.getElementById('iso-filename').value;
-    
+    let filename = document.getElementById('iso-filename').value;
+
     if(!url || !filename) {
         customAlert("Please provide URL and Filename");
         return;
     }
-    
+
+    filename = ensureIsoExtension(filename);
+    document.getElementById('iso-filename').value = filename;
+
     const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
     const debugConsole = document.getElementById('debug-console');
     const debugOutput = document.getElementById('debug-output');
@@ -67,7 +84,7 @@ async function startDownload() {
         debugConsole.style.display = 'flex';
         debugOutput.innerHTML = `<span style="color: #3b82f6;">[System]</span> Download clicked. Sending request...<br>`;
     }
-    
+
     const payload = {url, filename};
     if (isDebug && debugOutput) {
         debugOutput.innerHTML += `<span style="color: #3b82f6;">[Payload]</span> ${JSON.stringify(payload)}<br>`;
@@ -80,7 +97,7 @@ async function startDownload() {
             body: JSON.stringify(payload)
         });
         const result = await res.json();
-        
+
         if (isDebug && debugOutput && result.debug) {
             debugOutput.innerHTML += `<span style="color: #a855f7;">[Backend Logs]</span><br>${result.debug.join('<br>')}<br>------------------------<br>`;
         }
@@ -154,23 +171,77 @@ document.addEventListener('ws-iso_download_status', (e) => {
 
 function updateDownloadStatus(tasks) {
     try {
+        const container = document.getElementById('download-status-container');
+        const entries = Object.entries(tasks);
+
+        // Progress-only updates: update bar in place to avoid innerHTML churn.
+        let progressOnly = entries.length === Object.keys(lastDownloadStates).length;
+        if (progressOnly) {
+            for (const [taskId, task] of entries) {
+                const prev = lastDownloadStates[taskId];
+                if (!prev) { progressOnly = false; break; }
+                if (prev.status !== task.status ||
+                    prev.error !== task.error ||
+                    prev.filename !== task.filename) {
+                    progressOnly = false;
+                    break;
+                }
+            }
+        }
+
+        if (progressOnly) {
+            for (const [taskId, task] of entries) {
+                const prev = lastDownloadStates[taskId];
+                if (prev.progress === task.progress) continue;
+                const row = container.querySelector(`[data-task-id="${taskId}"] .progress-bar`);
+                if (row) row.style.width = `${task.progress}%`;
+            }
+            lastDownloadStates = {};
+            for (const [taskId, task] of entries) {
+                lastDownloadStates[taskId] = {
+                    status: task.status,
+                    progress: task.progress,
+                    filename: task.filename,
+                    error: task.error
+                };
+            }
+            const hasCompleted = entries.some(([, t]) => t.status === 'completed');
+            if (hasCompleted && Math.random() < 0.2) {
+                loadIsos();
+            }
+            return;
+        }
+
         let html = '';
-        for(const [taskId, task] of Object.entries(tasks)) {
+        for(const [taskId, task] of entries) {
             let cls = '';
             if(task.status === 'completed') cls = 'completed';
             if(task.status === 'error') cls = 'error';
-            
-            html += `<div class="status-item ${cls}">
-                <strong>Downloading:</strong> ${task.filename} 
+
+            html += `<div class="status-item ${cls}" data-task-id="${taskId}">
+                <strong>Downloading:</strong> ${task.filename}
                 <span style="color: var(--text-muted);">(${task.status})</span>
                 ${task.status === 'downloading' ? `<div class="progress-bar-container"><div class="progress-bar" style="width: ${task.progress}%"></div></div>` : ''}
                 ${task.error ? `<p style="color: var(--accent-red); background: transparent; border: none;">${task.error}</p>` : ''}
             </div>`;
         }
-        document.getElementById('download-status-container').innerHTML = html;
-        
+
+        if (html === lastDownloadHtml) return;
+        lastDownloadHtml = html;
+        container.innerHTML = html;
+
+        lastDownloadStates = {};
+        for (const [taskId, task] of entries) {
+            lastDownloadStates[taskId] = {
+                status: task.status,
+                progress: task.progress,
+                filename: task.filename,
+                error: task.error
+            };
+        }
+
         // Refresh ISO list if any completed
-        const hasCompleted = Object.values(tasks).some(t => t.status === 'completed');
+        const hasCompleted = entries.some(([, t]) => t.status === 'completed');
         if(hasCompleted && Math.random() < 0.2) { // just randomly refresh so we don't spam
             loadIsos();
         }
@@ -190,15 +261,19 @@ function updateWriteStatus(tasks) {
             let cls = '';
             if(task.status === 'completed') cls = 'completed';
             if(task.status === 'error') cls = 'error';
-            
-            html += `<div class="status-item ${cls}">
+
+            html += `<div class="status-item ${cls}" data-task-id="${taskId}">
                 <strong>Writing:</strong> ${task.filename} to /dev/${task.device}
                 <span style="color: var(--text-muted);">(${task.status})</span>
                 ${task.last_log ? `<p>> ${task.last_log}</p>` : ''}
                 ${task.error ? `<p style="color: var(--accent-red); background: transparent; border: none;">${task.error}</p>` : ''}
             </div>`;
         }
-        document.getElementById('write-status-container').innerHTML = html;
+
+        const container = document.getElementById('write-status-container');
+        if (html === lastWriteHtml) return;
+        lastWriteHtml = html;
+        container.innerHTML = html;
     } catch (e) {
         console.error("Update failed", e);
     }

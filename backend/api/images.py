@@ -98,7 +98,7 @@ SVG_HDD = """<svg width="120" height="90" viewBox="0 0 120 90" xmlns="http://www
 </svg>"""
 
 @router.get("/api/images/drives/{filename}")
-def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "", model: str = ""):
+def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "", model: str = "", custom_only: str = ""):
     safe_filename = os.path.basename(filename)
     # Remove .jpg extension for processing
     requested_base = safe_filename.rsplit('.', 1)[0]
@@ -107,6 +107,10 @@ def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "
     exact_file_path = os.path.join(DRIVES_DIR, f"{requested_base}.jpg")
     if os.path.exists(exact_file_path):
         return FileResponse(exact_file_path)
+
+    # custom_only lets a caller that draws its own default graphic detect a missing custom image
+    if custom_only:
+        raise HTTPException(status_code=404, detail="No custom image")
 
     # 2. Serving the default SVG matching the drive type
     name_lower = name.lower()

@@ -6,6 +6,7 @@
     <title>Disk Hunter | Speed Test History</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/history.css">
+    <link rel="stylesheet" href="css/history-common.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -25,36 +26,20 @@
                     </div>
                 </div>
                 
-                <table class="history-table">
+                <table class="history-table history-view">
                     <thead>
                         <tr>
-                            <th>Date / Time</th>
-                            <th>Event</th>
-                            <th>User (IP)</th>
-                            <th>Drive S/N</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th>Read Speed</th>
-                            <th>Write Speed</th>
+                            <th class="col-timestamp">Timestamp</th>
+                            <th class="col-user">User IP</th>
+                            <th class="col-drive">Drive / Target</th>
+                            <th class="col-status">Status</th>
+                            <th class="col-event">Event / Details</th>
                         </tr>
                     </thead>
                     <tbody id="history-list">
-                        <tr><td colspan="8">Loading history...</td></tr>
+                        <tr><td colspan="5">Loading history...</td></tr>
                     </tbody>
                 </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Logs Modal -->
-    <div id="logs-modal" class="modal-overlay">
-        <div class="modal-box logs-modal-box">
-            <div class="modal-header">Speed Test Logs</div>
-            <div class="modal-content history-modal-content">
-                <pre id="logs-output" class="logs-output-pre"></pre>
-            </div>
-            <div class="modal-actions">
-                <button id="btn-close-logs" class="btn-modal-cancel">Close</button>
             </div>
         </div>
     </div>
@@ -86,6 +71,7 @@
     </div>
 
     <script src="js/common.js"></script>
+    <script src="js/history-common.js"></script>
     <script src="js/speedtest_history.js"></script>
 </body>
 </html>

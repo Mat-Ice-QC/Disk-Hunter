@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import validate_drive_path
+from .drive_info import get_drive_serial
 
 from .models import ShredRequest, StopRequest
 from .history import append_history
@@ -91,15 +92,30 @@ def wipe_status():
         return {"status": "error", "message": str(e), "wiping": []}
 
 @router.post("/api/shred/stop")
-def stop_shred(request: StopRequest):
+def stop_shred(request: StopRequest, http_request: Request):
     try:
+        ip = get_client_ip(http_request)
+        # Derive the drive and serial from the container name
+        name_parts = request.container_name.replace("disk_hunter_wipe_", "").split("--")
+        drive = f"/dev/{name_parts[0]}" if name_parts[0] else "UNKNOWN"
+        serial = name_parts[1] if len(name_parts) > 1 else "UNKNOWN"
         # log audit history as "Stopped", and delete the container.
         stop_and_remove_container(request.container_name)
+        append_history({
+            "timestamp": get_local_time(),
+            "event": f"USER stopped wipe of {drive}",
+            "username": ip,
+            "serial": serial,
+            "drive": drive,
+            "status": "stopped",
+            "command": f"docker stop {request.container_name}",
+            "container_name": request.container_name
+        })
         return {"status": "success", "message": f"Stop command sent to {request.container_name}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, serial: str, req: ShredRequest, start_time: str, server_name: str, inv_id: str, datacenter: str, ip: str):
+async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, serial: str, req: ShredRequest, start_time: str, server_name: str, inv_id: str, datacenter: str, ip: str, command: str):
     exit_code = await wait_for_container(container_name)
 
     end_time = get_local_time(req.timezone)
@@ -107,6 +123,7 @@ async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, ser
 
     if exit_code == "0":
         status_text = "successfully completed"
+        status = "completed"
         if req.generate_pdf:
             report_filename = generate_erasure_certificate(
                 REPORTS_DIR, drive_name, serial, req.method, req.verify, start_time, end_time,
@@ -114,15 +131,20 @@ async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, ser
             )
     elif exit_code in ["137", "143"]:
         status_text = "stopped"
+        status = "stopped"
     else:
         status_text = f"failed (Exit Code: {exit_code})"
+        status = "failed"
 
     append_history({
         "timestamp": end_time,
         "event": f"USER {status_text} wipe of {drive}",
         "username": ip,
         "serial": serial,
+        "drive": drive,
         "method": req.method,
+        "command": command,
+        "status": status,
         "report_file": report_filename,
         "container_name": container_name
     })
@@ -164,18 +186,9 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 return {"status": "error", "message": err_msg, "debug": debug_logs}
             debug_logs.append(f"Configuring wipe for drive: {drive}")
             
-            serial = "UNKNOWN"
-            try:
-                s_cmd = ["lsblk", "-n", "-o", "SERIAL", drive]
-                debug_logs.append(f"Running command: {' '.join(s_cmd)}")
-                s_res = subprocess.run(s_cmd, capture_output=True, text=True)
-                if s_res.returncode == 0 and s_res.stdout.strip():
-                    serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', s_res.stdout.strip())
-                    debug_logs.append(f"Found serial for {drive}: {serial}")
-                else:
-                    debug_logs.append(f"lsblk query returned code {s_res.returncode}. stdout: '{s_res.stdout.strip()}', stderr: '{s_res.stderr.strip()}'")
-            except Exception as e:
-                debug_logs.append(f"Exception running lsblk command for {drive}: {str(e)}")
+            serial = get_drive_serial(drive)
+            serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', serial)
+            debug_logs.append(f"Resolved serial for {drive}: {serial}")
             
             container_name = f"disk_hunter_wipe_{drive_name}--{serial}"
             
@@ -205,6 +218,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 image = "disk-hunter-nwipe"
                 args = ["--autonuke", "--nogui", "--verbose", f"--method={request.method}", f"--verify={request.verify}", drive]
 
+            cmd_out = []
             success = run_container(
                 name=container_name,
                 image=image,
@@ -213,8 +227,10 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 devices=devices,
                 tty=True,
                 env=container_env,
-                debug_list=debug_logs
+                debug_list=debug_logs,
+                cmd_out=cmd_out
             )
+            command = cmd_out[0] if cmd_out else ""
             
             if not success:
                 debug_logs.append(f"Failed to start container {container_name}")
@@ -223,8 +239,12 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
             append_history({
                 "timestamp": start_time,
                 "event": f"USER started wipe of {drive}",
+                "username": ip,
                 "serial": serial,
+                "drive": drive,
                 "method": request.method,
+                "command": command,
+                "status": "started",
                 "report_file": None,
                 "container_name": container_name
             })
@@ -234,7 +254,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 monitor_wipe_job, 
                 container_name, drive, drive_name, serial, request, start_time, 
                 drive_obj.server_name, drive_obj.inventory_id, drive_obj.datacenter,
-                ip
+                ip, command
             )
             spawned_containers.append(container_name)
 

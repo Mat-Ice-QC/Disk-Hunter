@@ -1,3 +1,5 @@
+let currentHistory = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchHistory();
 
@@ -7,13 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnExport = document.getElementById('btn-export-csv');
     if (btnExport) {
         btnExport.addEventListener('click', exportToCSV);
-    }
-
-    const btnCloseLogs = document.getElementById('btn-close-logs');
-    if (btnCloseLogs) {
-        btnCloseLogs.addEventListener('click', () => {
-            document.getElementById('logs-modal').classList.remove('active');
-        });
     }
 });
 
@@ -28,7 +23,7 @@ async function fetchHistory() {
         if (data.status === 'success') {
             renderHistory(data.history);
         } else {
-            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Error: ${data.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Error: ${HistoryCommon.escapeHtml(data.message)}</td></tr>`;
         }
     } catch (error) {
         console.error("History fetch error:", error);
@@ -39,61 +34,40 @@ async function fetchHistory() {
 function renderHistory(history) {
     const tbody = document.getElementById('history-body');
     tbody.innerHTML = '';
+    currentHistory = history || [];
     
-    if (!history || history.length === 0) {
+    if (currentHistory.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No shredding history found.</td></tr>';
         return;
     }
     
-    history.forEach(log => {
-        const pdfButton = log.report_file 
-            ? `<a href="/api/reports/${log.report_file}" target="_blank" class="btn-pdf" onclick="event.stopPropagation()">View PDF</a>` 
-            : `<span style="color: var(--text-muted); font-size: 12px;">--</span>`;
-            
+    currentHistory.forEach(log => {
         // Fallback: If it's an old log without an "event", piece it together from "drive"
         const eventText = log.event || `USER started wipe of ${log.drive || 'Unknown'}`;
-            
-        // Colorize the event string based on success/failure/stop
-        let eventColor = "var(--text-main)";
-        if(eventText.includes("started")) eventColor = "var(--primary)";
-        if(eventText.includes("successfully")) eventColor = "var(--accent-green)";
-        if(eventText.includes("stopped")) eventColor = "#f59e0b";
-        if(eventText.includes("failed")) eventColor = "var(--accent-red)";
+        const details = ['Method: ' + (log.method ? log.method.toUpperCase() : 'UNKNOWN')];
 
-        // Safely handle missing methods or serials from older logs too
-        const methodText = log.method ? log.method.toUpperCase() : 'UNKNOWN';
-        const serialText = log.serial || 'N/A';
+        const reportLink = log.report_file 
+            ? `<a href="/api/reports/${encodeURIComponent(log.report_file)}" target="_blank" class="btn-pdf" onclick="event.stopPropagation()">View PDF</a>` 
+            : '';
 
-        const userIp = log.user_ip || 'N/A';
-        const duration = log.duration ? `${log.duration}s` : 'Unknown';
-        
-        const tooltipHTML = `<strong>Operation Details</strong>` +
-                            `Started: ${log.timestamp}<br>` +
-                            `IP Address: ${userIp}<br>` +
-                            `Duration: ${duration}`;
-                            
+        const options = {
+            title: 'Shredding Logs',
+            event: eventText,
+            details: details,
+            logUrl: log.container_name ? () => `/api/shredding/logs/${encodeURIComponent(log.container_name)}` : null
+        };
+
         const tr = document.createElement('tr');
-        tr.setAttribute('data-tooltip', tooltipHTML.replace(/"/g, '&quot;'));
-        
-        if (log.container_name) {
-            tr.style.cursor = 'pointer';
-            tr.title = 'Click to view logs';
-            tr.addEventListener('click', () => showLogsModal(log.container_name));
-            
-            // Highlight row on hover via css if we had a specific class, or inline events:
-            tr.addEventListener('mouseover', () => { tr.style.backgroundColor = 'var(--bg-lighter)'; });
-            tr.addEventListener('mouseout', () => { tr.style.backgroundColor = ''; });
-        }
+        tr.innerHTML = HistoryCommon.renderLogHeader(log, { event: eventText, details: details, extraHtml: reportLink });
+        HistoryCommon.makeRowClickable(tr, log, options);
 
-        tr.innerHTML = `
-            <td style="white-space: nowrap;">${log.timestamp}</td>
-            <td style="color: ${eventColor}; font-weight: bold;">${eventText}</td>
-            <td>${userIp}</td>
-            <td>${serialText}</td>
-            <td><span class="badge" style="background: #334155; color: white;">${methodText}</span></td>
-            <td>${pdfButton}</td>
-        `;
-        
+        const duration = log.duration ? `${log.duration}s` : 'Unknown';
+        const tooltipHTML = `<strong>Operation Details</strong>` +
+                            `Started: ${HistoryCommon.escapeHtml(log.timestamp || 'N/A')}<br>` +
+                            `IP Address: ${HistoryCommon.escapeHtml(log.user_ip || log.username || 'N/A')}<br>` +
+                            `Duration: ${HistoryCommon.escapeHtml(duration)}`;
+        tr.setAttribute('data-tooltip', tooltipHTML.replace(/"/g, '&quot;'));
+
         tbody.appendChild(tr);
     });
 }
@@ -115,58 +89,24 @@ function clearHistory() {
     });
 }
 
-async function showLogsModal(containerName) {
-    const logsOutput = document.getElementById('logs-output');
-    logsOutput.textContent = 'Loading logs...';
-    document.getElementById('logs-modal').classList.add('active');
-
-    try {
-        const response = await fetch(`/api/shredding/logs/${containerName}`);
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            logsOutput.textContent = data.logs || 'No logs available.';
-        } else {
-            logsOutput.textContent = `Error: ${data.message}`;
-        }
-    } catch (error) {
-        console.error("Failed to fetch logs:", error);
-        logsOutput.textContent = 'Failed to load logs due to a network error.';
-    }
-}
-
 function exportToCSV() {
-    const tbody = document.getElementById('history-body');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    if (rows.length === 0 || rows[0].innerText.includes('No shredding history found') || rows[0].innerText.includes('Loading...')) {
+    if (currentHistory.length === 0) {
         customAlert('No history data available to export.');
         return;
     }
 
     let csvContent = "Date & Time,Event,User (IP),Serial Number,Algorithm,Report File\n";
 
-    rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if (cols.length === 6) {
-            const dateTime = cols[0].innerText;
-            const eventText = cols[1].innerText;
-            const userIp = cols[2].innerText;
-            const serial = cols[3].innerText;
-            const method = cols[4].innerText;
-            let report = "N/A";
-            
-            const pdfLink = cols[5].querySelector('a');
-            if (pdfLink) {
-                const href = pdfLink.getAttribute('href');
-                if (href) {
-                    report = href.split('/').pop();
-                }
-            }
-
-            const rowData = [dateTime, eventText, userIp, serial, method, report].map(val => `"${String(val).replace(/"/g, '""')}"`);
-            csvContent += rowData.join(",") + "\n";
-        }
+    currentHistory.forEach(log => {
+        const rowData = [
+            HistoryCommon.formatTimestamp(log.timestamp),
+            log.event || `USER started wipe of ${log.drive || 'Unknown'}`,
+            log.user_ip || log.username || 'N/A',
+            log.serial || 'N/A',
+            log.method ? log.method.toUpperCase() : 'UNKNOWN',
+            log.report_file || 'N/A'
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`);
+        csvContent += rowData.join(",") + "\n";
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

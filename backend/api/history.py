@@ -1,32 +1,41 @@
 import json
 import os
+import threading
 from fastapi import APIRouter
-from .config import HISTORY_FILE, SMARTCTL_HISTORY_FILE, REPORTS_DIR, PARTITION_HISTORY_FILE
+from .config import HISTORY_FILE, SMARTCTL_HISTORY_FILE, REPORTS_DIR, PARTITION_HISTORY_FILE, SPEEDTEST_HISTORY_FILE
 
 router = APIRouter()
 
-def append_history(entry):
+_history_lock = threading.Lock()
+
+def _append(path: str, entry, label: str = "history"):
     try:
-        history = []
-        # Safely try to read the existing file
-        if os.path.exists(HISTORY_FILE):
-            try:
-                with open(HISTORY_FILE, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        history = json.loads(content)
-            except Exception:
-                # If the file is empty or corrupted creat another
-                history = []
-                
-        # Insert the new log at the top
-        history.insert(0, entry)
-        
-        # Safely overwrite the file with the new array
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=4)
+        with _history_lock:
+            history = []
+            # Safely try to read the existing file
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        content = f.read().strip()
+                        if content:
+                            history = json.loads(content)
+                except Exception:
+                    # If the file is empty or corrupted creat another
+                    history = []
+
+            # Insert the new log at the top
+            history.insert(0, entry)
+
+            # Atomically overwrite the file: write a temp file then swap it in
+            tmp_path = path + ".tmp"
+            with open(tmp_path, "w") as f:
+                json.dump(history, f, indent=4)
+            os.replace(tmp_path, path)
     except Exception as e:
-        print(f"Failed to save wipe history: {e}")
+        print(f"Failed to save {label}: {e}")
+
+def append_history(entry):
+    _append(HISTORY_FILE, entry, "wipe history")
 
 @router.get("/api/history")
 def get_history():
@@ -68,21 +77,7 @@ def clear_history():
         return {"status": "error", "message": str(e)}
 
 def append_smartctl_history(entry):
-    try:
-        history = []
-        if os.path.exists(SMARTCTL_HISTORY_FILE):
-            try:
-                with open(SMARTCTL_HISTORY_FILE, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        history = json.loads(content)
-            except Exception:
-                history = []
-        history.insert(0, entry)
-        with open(SMARTCTL_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=4)
-    except Exception as e:
-        print(f"Failed to save smartctl history: {e}")
+    _append(SMARTCTL_HISTORY_FILE, entry, "smartctl history")
 
 @router.get("/api/smart-history")
 def get_smart_history():
@@ -121,24 +116,8 @@ def clear_smart_history():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-from .config import SPEEDTEST_HISTORY_FILE
-
 def append_speedtest_history(entry):
-    try:
-        history = []
-        if os.path.exists(SPEEDTEST_HISTORY_FILE):
-            try:
-                with open(SPEEDTEST_HISTORY_FILE, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        history = json.loads(content)
-            except Exception:
-                history = []
-        history.insert(0, entry)
-        with open(SPEEDTEST_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=4)
-    except Exception as e:
-        print(f"Failed to save speedtest history: {e}")
+    _append(SPEEDTEST_HISTORY_FILE, entry, "speedtest history")
 
 @router.get("/api/speedtest-history")
 def get_speedtest_history():
@@ -180,21 +159,7 @@ def clear_speedtest_history():
 ISO_HISTORY_FILE = "/app/data/iso_history.json"
 
 def append_iso_history(entry):
-    try:
-        history = []
-        if os.path.exists(ISO_HISTORY_FILE):
-            try:
-                with open(ISO_HISTORY_FILE, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        history = json.loads(content)
-            except Exception:
-                history = []
-        history.insert(0, entry)
-        with open(ISO_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=4)
-    except Exception as e:
-        print(f"Failed to save iso history: {e}")
+    _append(ISO_HISTORY_FILE, entry, "iso history")
 
 @router.get("/api/iso-history")
 def get_iso_history():
@@ -220,21 +185,7 @@ def clear_iso_history():
         return {"status": "error", "message": str(e)}
 
 def append_partition_history(entry):
-    try:
-        history = []
-        if os.path.exists(PARTITION_HISTORY_FILE):
-            try:
-                with open(PARTITION_HISTORY_FILE, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        history = json.loads(content)
-            except Exception:
-                history = []
-        history.insert(0, entry)
-        with open(PARTITION_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=4)
-    except Exception as e:
-        print(f"Failed to save partition history: {e}")
+    _append(PARTITION_HISTORY_FILE, entry, "partition history")
 
 @router.get("/api/partition-history")
 def get_partition_history():

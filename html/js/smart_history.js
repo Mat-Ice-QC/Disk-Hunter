@@ -1,3 +1,5 @@
+let currentHistory = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchHistory();
 
@@ -7,14 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnExport = document.getElementById('btn-export-csv');
     if (btnExport) {
         btnExport.addEventListener('click', exportToCSV);
-    }
-    
-    
-    const btnCloseLogs = document.getElementById('btn-close-logs');
-    if (btnCloseLogs) {
-        btnCloseLogs.addEventListener('click', () => {
-            document.getElementById('logs-modal').classList.remove('active');
-        });
     }
 });
 
@@ -29,7 +23,7 @@ async function fetchHistory() {
         if (data.status === 'success') {
             renderHistory(data.history);
         } else {
-            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Error: ${data.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red); text-align: center;">Error: ${HistoryCommon.escapeHtml(data.message)}</td></tr>`;
         }
     } catch (error) {
         console.error("History fetch error:", error);
@@ -40,36 +34,26 @@ async function fetchHistory() {
 function renderHistory(history) {
     const tbody = document.getElementById('history-body');
     tbody.innerHTML = '';
+    currentHistory = history || [];
     
-    if (!history || history.length === 0) {
+    if (currentHistory.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No S.M.A.R.T. history found.</td></tr>';
         return;
     }
     
-    history.forEach(entry => {
-        let statusColor = "var(--text-main)";
-        if (entry.status === 'completed') statusColor = "var(--accent-green)";
-        if (entry.status === 'failed') statusColor = "var(--accent-red)";
-        if (entry.status === 'started') statusColor = "var(--primary)";
+    currentHistory.forEach(entry => {
+        const details = entry.test_type ? ['Test: ' + entry.test_type] : [];
+
+        const options = {
+            title: 'S.M.A.R.T. Test Logs',
+            details: details,
+            logUrl: entry.container_name ? () => `/api/smart/logs/${encodeURIComponent(entry.container_name)}` : null
+        };
 
         const tr = document.createElement('tr');
-        
-        if (entry.container_name) {
-            tr.style.cursor = 'pointer';
-            tr.title = 'Click to view logs';
-            tr.addEventListener('click', () => showLogsModal(entry.container_name));
-            tr.addEventListener('mouseover', () => { tr.style.backgroundColor = 'var(--bg-lighter)'; });
-            tr.addEventListener('mouseout', () => { tr.style.backgroundColor = ''; });
-        }
+        tr.innerHTML = HistoryCommon.renderLogHeader(entry, { details: details });
+        HistoryCommon.makeRowClickable(tr, entry, options);
 
-        tr.innerHTML = `
-            <td style="white-space: nowrap;">${new Date(entry.timestamp).toLocaleString()}</td>
-            <td style="color: var(--text-main); font-weight: bold;">${entry.event}</td>
-            <td>${entry.username || 'Unknown'}</td>
-            <td>${entry.serial || 'N/A'}</td>
-            <td style="color: ${statusColor}; font-weight: bold; text-transform: uppercase;">${entry.status}</td>
-        `;
-        
         tbody.appendChild(tr);
     });
 }
@@ -91,43 +75,23 @@ function clearHistory() {
     });
 }
 
-async function showLogsModal(containerName) {
-    const logsOutput = document.getElementById('logs-output');
-    logsOutput.textContent = 'Loading logs...';
-    document.getElementById('logs-modal').classList.add('active');
-
-    try {
-        const response = await fetch(`/api/smart/logs/${containerName}`);
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            logsOutput.textContent = data.logs || 'No logs available.';
-        } else {
-            logsOutput.textContent = `Error: ${data.message}`;
-        }
-    } catch (error) {
-        console.error("Failed to fetch logs:", error);
-        logsOutput.textContent = 'Failed to load logs due to a network error.';
-    }
-}
-
 function exportToCSV() {
-    const tbody = document.getElementById('history-body');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    if (rows.length === 0 || rows[0].innerText.includes('No S.M.A.R.T. history found') || rows[0].innerText.includes('Loading...')) {
+    if (currentHistory.length === 0) {
         customAlert('No history data available to export.');
         return;
     }
 
     let csvContent = "Date & Time,Event,User (IP),Serial Number,Status\n";
 
-    rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if (cols.length === 5) {
-            const rowData = Array.from(cols).map(col => `"${String(col.innerText).replace(/"/g, '""')}"`);
-            csvContent += rowData.join(",") + "\n";
-        }
+    currentHistory.forEach(entry => {
+        const rowData = [
+            HistoryCommon.formatTimestamp(entry.timestamp),
+            entry.event || 'N/A',
+            entry.username || 'N/A',
+            entry.serial || 'N/A',
+            entry.status || 'N/A'
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`);
+        csvContent += rowData.join(",") + "\n";
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

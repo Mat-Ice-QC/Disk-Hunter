@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pydantic import BaseModel
 from datetime import datetime
 import os
 import json
@@ -93,6 +94,36 @@ def save_temperature_config(req: TemperatureConfigRequest):
     if _write_json_file(APP_SETTINGS_FILE, data):
         return {"status": "success", "message": "Temperature settings saved."}
     return {"status": "error", "message": "Failed to save temperature settings."}
+
+
+# --- App settings (Generate Cert flag, machine-level, server-side) ---
+class AppSettingsRequest(BaseModel):
+    generate_pdf: bool = False
+
+
+@router.get("/api/settings/app")
+def get_app_settings():
+    data = _read_json_file(APP_SETTINGS_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "status": "success",
+        "settings": {
+            "generate_pdf": data.get("generate_pdf", False),
+            "generate_pdf_set": "generate_pdf" in data,
+        },
+    }
+
+
+@router.post("/api/settings/app")
+def save_app_settings(req: AppSettingsRequest):
+    data = _read_json_file(APP_SETTINGS_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    data["generate_pdf"] = req.generate_pdf
+    if _write_json_file(APP_SETTINGS_FILE, data):
+        return {"status": "success", "message": "Setting saved to the Disk Hunter machine."}
+    return {"status": "error", "message": "Failed to save setting."}
 
 @router.delete("/api/settings/clear-isos")
 def clear_all_isos():

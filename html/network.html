@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Network</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/network.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="network-page">
+                <h2 class="network-page-title">Network</h2>
+
+                <div class="network-warning-banner">
+                    Warning: changing the IP of the interface you are connected through drops your session.
+                    If you cannot reach the new address, the previous settings are restored automatically after the rollback timer.
+                </div>
+
+                <!-- Current state -->
+                <div class="network-group">
+                    <div class="network-group-label">Current State</div>
+                    <div class="network-list">
+                        <div class="network-summary-row">
+                            <div class="network-summary-item">
+                                <div class="network-summary-label">Hostname</div>
+                                <div class="network-summary-value" id="net-hostname">--</div>
+                            </div>
+                            <div class="network-summary-item">
+                                <div class="network-summary-label">Default Gateway</div>
+                                <div class="network-summary-value" id="net-gateway">--</div>
+                            </div>
+                            <div class="network-summary-item">
+                                <div class="network-summary-label">DNS Servers</div>
+                                <div class="network-summary-value" id="net-dns">--</div>
+                            </div>
+                        </div>
+                        <div id="net-interfaces" class="network-interface-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Configuration form -->
+                <div class="network-group">
+                    <div class="network-group-label">Change Configuration</div>
+                    <div class="network-list">
+                        <div class="network-form-grid">
+                            <label class="network-field">
+                                <span class="network-field-label" id="net-interface-label">Interface</span>
+                                <select id="net-interface-select" class="network-input"></select>
+                            </label>
+                            <div class="network-field">
+                                <span class="network-field-label">Mode</span>
+                                <div class="network-mode-toggle">
+                                    <button type="button" id="net-mode-dhcp" class="network-mode-btn active">DHCP</button>
+                                    <button type="button" id="net-mode-static" class="network-mode-btn">Static</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="network-vlan-toggle-row">
+                            <label class="network-vlan-toggle">
+                                <input type="checkbox" id="net-vlan-enabled">
+                                <span>Use VLAN (802.1Q)</span>
+                            </label>
+                        </div>
+                        <div id="net-vlan-fields" class="network-form-grid" style="display:none;">
+                            <label class="network-field">
+                                <span class="network-field-label">VLAN ID</span>
+                                <input type="number" id="net-vlan-id" class="network-input" min="1" max="4094" placeholder="e.g. 100">
+                                <span id="net-vlan-hint" class="network-vlan-hint"></span>
+                            </label>
+                            <div class="network-field">
+                                <span class="network-field-label">VLAN sub-interface</span>
+                                <span id="net-vlan-device-preview" class="network-vlan-preview">--</span>
+                            </div>
+                            <div class="network-field" id="net-vlan-default-field" style="display:none;">
+                                <span class="network-field-label">Routing</span>
+                                <label class="network-vlan-toggle">
+                                    <input type="checkbox" id="net-vlan-default-route">
+                                    <span>Set as default route</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="net-static-fields" class="network-form-grid">
+                            <label class="network-field">
+                                <span class="network-field-label">IPv4 Address</span>
+                                <input type="text" id="net-address" class="network-input" placeholder="e.g. 192.168.1.50">
+                            </label>
+                            <label class="network-field">
+                                <span class="network-field-label">Prefix (/)</span>
+                                <input type="number" id="net-prefix" class="network-input" min="8" max="30" placeholder="24">
+                            </label>
+                            <label class="network-field">
+                                <span class="network-field-label">Gateway (optional)</span>
+                                <input type="text" id="net-gateway" class="network-input" placeholder="e.g. 192.168.1.1">
+                            </label>
+                        </div>
+                        <div class="network-field">
+                            <span class="network-field-label">DNS Servers</span>
+                            <div class="net-dns-row">
+                                <input type="text" id="net-dns-input" class="network-input" placeholder="Add a DNS server (e.g. 1.1.1.1)">
+                                <button type="button" id="btn-net-dns-add" class="btn-action network-btn-sm">Add</button>
+                            </div>
+                            <div id="net-dns-list" class="net-dns-list"></div>
+                        </div>
+                        <div class="network-form-actions">
+                            <button type="button" id="btn-net-validate" class="btn-action">Validate</button>
+                            <button type="button" id="btn-net-apply" class="btn-action red" disabled>Apply with rollback</button>
+                            <label class="network-rollback-field">Rollback timer (s)
+                                <input type="number" id="net-rollback-seconds" class="network-rollback-input" value="90" min="30" max="300" step="10">
+                            </label>
+                        </div>
+                        <div id="net-apply-note" class="network-apply-note"></div>
+                        <div id="net-status" class="network-status"></div>
+                    </div>
+                </div>
+
+                <!-- Validation result -->
+                <div class="network-group" id="net-plan-group" style="display:none;">
+                    <div class="network-group-label">Validation Result</div>
+                    <div class="network-list">
+                        <div id="net-validation-errors" class="network-error-list"></div>
+                        <div id="net-validation-warnings" class="network-warning-list"></div>
+                        <div id="net-validation-warning" class="network-warning-text" style="display:none;"></div>
+                        <div id="net-plan-block">
+                            <div class="network-plan-label">Commands that would run</div>
+                            <pre id="net-plan-commands" class="network-pre"></pre>
+                            <div class="network-plan-label">Netplan configuration (not written by the API; place manually for persistence across reboot)</div>
+                            <pre id="net-plan-yaml" class="network-pre"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pending change countdown -->
+                <div class="network-group" id="net-countdown-group" style="display:none;">
+                    <div class="network-group-label">Pending Change</div>
+                    <div class="network-list network-countdown-body">
+                        <div class="network-countdown-message">New settings applied at runtime. Rolling back in <span id="net-countdown-seconds" class="network-countdown-seconds">--</span> seconds unless confirmed.</div>
+                        <div id="net-countdown-hint" class="network-hint"></div>
+                        <button type="button" id="btn-net-confirm" class="btn-action">Confirm new settings</button>
+                        <div id="net-countdown-status" class="network-status"></div>
+                    </div>
+                </div>
+
+                <!-- History -->
+                <div class="network-group">
+                    <div class="network-group-label">Recent Network Events</div>
+                    <div class="network-list">
+                        <div id="net-history-list" class="network-history-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/network.js"></script>
+</body>
+</html>

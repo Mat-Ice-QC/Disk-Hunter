@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api import system, disks, shredding, history, reports, images, settings, smartctl, partition, speedtest, iso, data_management, ws
+from api import system, disks, shredding, history, reports, images, settings, smartctl, partition, speedtest, iso, data_management, network, ws
 from api.config import setup_directories
 
 # Initialize directories on startup
@@ -32,6 +32,7 @@ app.include_router(reports.router)
 app.include_router(images.router)
 app.include_router(settings.router)
 app.include_router(partition.router)
+app.include_router(network.router)
 app.include_router(ws.router)
 
 # Include conditionally enabled routers

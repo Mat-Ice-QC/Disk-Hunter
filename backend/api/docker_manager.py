@@ -1,6 +1,7 @@
 import subprocess
 import asyncio
 import re
+import shlex
 
 def get_running_containers(filter_name: str) -> list[str]:
     """Returns a list of running container names matching the filter."""
@@ -45,8 +46,8 @@ async def wait_for_container(container_name: str) -> str:
     stdout, _ = await proc.communicate()
     return stdout.decode().strip()
 
-def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None, debug_list: list = None) -> bool:
-    """Runs a docker container and returns True if successful. Optional debug_list collects docker commands and outputs."""
+def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None, debug_list: list = None, cmd_out: list = None) -> bool:
+    """Runs a docker container and returns True if successful. Optional debug_list collects docker commands and outputs; cmd_out collects the exact run command as a shell-quoted string."""
     rm_cmd = ["docker", "rm", "-f", name]
     if debug_list is not None:
         debug_list.append(f"Cleanup command: {' '.join(rm_cmd)}")
@@ -76,7 +77,10 @@ def run_container(name: str, image: str, args: list[str], privileged: bool = Fal
     
     if debug_list is not None:
         debug_list.append(f"Run command: {' '.join(cmd)}")
-        
+
+    if cmd_out is not None:
+        cmd_out.append(shlex.join(cmd))
+
     res = subprocess.run(cmd, capture_output=True, text=True)
     
     if debug_list is not None:

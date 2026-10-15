@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cached = sessionStorage.getItem('dh_ws_cache');
     if (cached) {
         try {
-            processWebSocketData(JSON.parse(cached));
+            processWebSocketData(JSON.parse(cached), true);
         } catch (e) {
             console.error("Error loading cached WS data:", e);
         }
@@ -99,6 +99,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize selection toolbars on any page with drive-checkbox items
     initSelectionToolbar();
+
+    // Pause non-essential DOM updates while hidden; refresh once on return
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        updateTime();
+        if (wsLatestSystemInfo) updateSystemInfoUI(wsLatestSystemInfo);
+        flushWsDispatch();
+    });
 });
 
 // --- Global Debug Console ---
@@ -244,34 +252,36 @@ function setActiveSidebarLink() {
         'settings.html': 'nav-settings'
     };
     
+    // Each collapsible sub-item and the parent module that reveals it
+    const submenuParentMap = {
+        'nav-history': 'nav-shredding',
+        'nav-smart-history': 'nav-smartctl',
+        'nav-partition-history': 'nav-partition',
+        'nav-speedtest-history': 'nav-speedtest',
+        'nav-iso-history': 'nav-iso'
+    };
+    
     // Default to index if not found
-    const activeId = pageIdMap[currentPage] || 'nav-index';
+    const activeId = pageIdMap[currentPage] || (currentPage === 'network.html' ? '' : 'nav-index');
     const activeLink = document.getElementById(activeId);
     if (activeLink) {
         activeLink.classList.add('active');
-        // If it's a submenu item, also activate its parent
+        // Sub-item page active: keep its parent module highlighted too
         if (activeLink.classList.contains('submenu-item')) {
-            let parentId = null;
-            if (currentPage === 'history.html') {
-                parentId = 'nav-shredding';
-            } else if (currentPage === 'smart_history.html') {
-                parentId = 'nav-smart-history'; // wait, parent of smart_history is smartctl
-                parentId = 'nav-smartctl';
-            } else if (currentPage === 'partition_history.html') {
-                parentId = 'nav-partition';
-            } else if (currentPage === 'speedtest_history.html') {
-                parentId = 'nav-speedtest';
-            } else if (currentPage === 'iso_history.html') {
-                parentId = 'nav-iso';
-            }
-            if (parentId) {
-                const parentLink = document.getElementById(parentId);
-                if (parentLink) {
-                    parentLink.classList.add('active');
-                }
+            const parentLink = document.getElementById(submenuParentMap[activeId] || '');
+            if (parentLink) {
+                parentLink.classList.add('active');
             }
         }
     }
+
+    // Show a sub-item only when its own page or its parent module page is active
+    Object.keys(submenuParentMap).forEach(subId => {
+        const subLink = document.getElementById(subId);
+        if (subLink && (activeId === subId || activeId === submenuParentMap[subId])) {
+            subLink.classList.add('visible');
+        }
+    });
 }
 
 
@@ -324,15 +334,59 @@ function updateSystemInfoUI(data) {
     }
 }
 
-function processWebSocketData(data) {
-    // Dispatch global events for other components to listen to
-    if (data.disks) document.dispatchEvent(new CustomEvent('ws-disks', { detail: data.disks }));
-    if (data.smart_health) document.dispatchEvent(new CustomEvent('ws-smart_health', { detail: data.smart_health }));
-    if (data.wipe_status) document.dispatchEvent(new CustomEvent('ws-wipe_status', { detail: data.wipe_status }));
-    if (data.speedtest_status) document.dispatchEvent(new CustomEvent('ws-speedtest_status', { detail: data.speedtest_status }));
-    if (data.smart_status) document.dispatchEvent(new CustomEvent('ws-smart_status', { detail: data.smart_status }));
-    if (data.iso_download_status) document.dispatchEvent(new CustomEvent('ws-iso_download_status', { detail: data.iso_download_status }));
-    if (data.iso_write_status) document.dispatchEvent(new CustomEvent('ws-iso_write_status', { detail: data.iso_write_status }));
+// --- WebSocket payload dispatch ---
+// Each section is diffed against the previous payload: the 'ws-<name>' event
+// fires only when that section changed. Status sections carry live progress
+// and always dispatch so running jobs keep updating.
+const WS_SECTIONS = [
+    'disks', 'smart_health', 'wipe_status', 'speedtest_status',
+    'smart_status', 'iso_download_status', 'iso_write_status'
+];
+const WS_PROGRESS_SECTIONS = ['wipe_status', 'speedtest_status', 'smart_status', 'iso_download_status', 'iso_write_status'];
+const WS_CACHE_WRITE_INTERVAL = 5000; // min ms between 'dh_ws_cache' writes
+
+const wsLastSectionJson = {}; // section -> last JSON string
+const wsPending = {};         // section -> payload awaiting the next frame
+let wsFlushScheduled = false;
+let wsLastCacheWrite = 0;
+let wsLatestSystemInfo = null;
+let wsLatestSystemInfoJson = '';
+
+function processWebSocketData(data, immediate = false) {
+    let hasPending = false;
+    WS_SECTIONS.forEach(name => {
+        if (!data[name]) return;
+        const payload = data[name];
+        const json = JSON.stringify(payload);
+        const changed = wsLastSectionJson[name] !== json;
+        wsLastSectionJson[name] = json;
+        if (changed || WS_PROGRESS_SECTIONS.indexOf(name) !== -1) {
+            wsPending[name] = payload;
+            hasPending = true;
+        }
+    });
+    if (!hasPending) return;
+    if (immediate) flushWsDispatch();
+    else scheduleWsDispatch();
+}
+
+// Coalesce: several WS messages within one frame dispatch (render) only once
+function scheduleWsDispatch() {
+    if (wsFlushScheduled) return;
+    wsFlushScheduled = true;
+    requestAnimationFrame(flushWsDispatch);
+}
+
+function flushWsDispatch() {
+    wsFlushScheduled = false;
+    // Skip DOM updates while hidden; pending sections flush on visibilitychange
+    if (document.hidden) return;
+    WS_SECTIONS.forEach(name => {
+        if (!(name in wsPending)) return;
+        const payload = wsPending[name];
+        delete wsPending[name];
+        document.dispatchEvent(new CustomEvent('ws-' + name, { detail: payload }));
+    });
 }
 
 let ws = null;
@@ -351,13 +405,22 @@ function initWebSocket() {
             const data = JSON.parse(event.data);
             
             if (data.system_info) {
-                updateSystemInfoUI(data.system_info);
+                const json = JSON.stringify(data.system_info);
+                if (json !== wsLatestSystemInfoJson) {
+                    wsLatestSystemInfoJson = json;
+                    wsLatestSystemInfo = data.system_info;
+                    if (!document.hidden) updateSystemInfoUI(data.system_info);
+                }
             }
             
             // Save to cache for instant navigation, excluding system_info (time/temp)
-            const cacheData = { ...data };
-            delete cacheData.system_info;
-            sessionStorage.setItem('dh_ws_cache', JSON.stringify(cacheData));
+            const now = Date.now();
+            if (now - wsLastCacheWrite >= WS_CACHE_WRITE_INTERVAL) {
+                wsLastCacheWrite = now;
+                const cacheData = { ...data };
+                delete cacheData.system_info;
+                sessionStorage.setItem('dh_ws_cache', JSON.stringify(cacheData));
+            }
 
             processWebSocketData(data);
         } catch (e) {
@@ -378,6 +441,7 @@ function initWebSocket() {
 
 
 function updateTime() {
+    if (document.hidden) return; // skip DOM writes while hidden; refreshed on visibilitychange
     const now = new Date();
     const timeString = now.toLocaleTimeString('en-US', { hour12: false });
     const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

@@ -6,6 +6,7 @@
     <title>Disk Hunter | Shredding History</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/history.css">
+    <link rel="stylesheet" href="css/history-common.css">
 </head>
 <body>
     <div id="sidebar-container" class="sidebar"></div>
@@ -26,38 +27,24 @@
                     </div>
                 </div>
                 
-                <table class="history-table">
+                <table class="history-table history-view">
                     <thead>
                         <tr>
-                            <th>Date & Time</th>
-                            <th>Event</th>
-                            <th>User (IP)</th>
-                            <th>Serial Number</th>
-                            <th>Algorithm</th>
-                            <th>Report</th>
+                            <th class="col-timestamp">Timestamp</th>
+                            <th class="col-user">User IP</th>
+                            <th class="col-drive">Drive / Target</th>
+                            <th class="col-status">Status</th>
+                            <th class="col-event">Event / Details</th>
                         </tr>
                     </thead>
                     <tbody id="history-body">
-                        <tr id="loading-message"><td colspan="6">Loading logs...</td></tr>
+                        <tr id="loading-message"><td colspan="5">Loading logs...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
     
-    <!-- Logs Modal -->
-    <div id="logs-modal" class="modal-overlay">
-        <div class="modal-box logs-modal-box">
-            <div class="modal-header">Shredding Logs</div>
-            <div class="modal-content history-modal-content">
-                <pre id="logs-output" class="logs-output-pre"></pre>
-            </div>
-            <div class="modal-actions">
-                <button id="btn-close-logs" class="btn-modal-cancel">Close</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Custom Alert/Confirm Modals -->
     <div id="custom-alert-modal" class="modal-overlay">
         <div class="modal-box alert-modal-box">
@@ -85,6 +72,7 @@
     </div>
 
     <script src="js/common.js"></script>
+    <script src="js/history-common.js"></script>
     <script src="js/history.js"></script>
 </body>
 </html>

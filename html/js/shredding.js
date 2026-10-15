@@ -6,6 +6,37 @@ let refreshInterval;
 let previousDiskStateHash = ""; 
 let activeShredTab = 'standard';
 let selectedMethod = 'dodshort';
+let modalMeta = {};
+let generatePdfSetting = localStorage.getItem('disk_hunter_pdf') === 'true';
+let shredNoticeTimer = null;
+
+// Generate Cert setting lives on the server; localStorage is an offline cache only
+function loadGeneratePdfSetting() {
+    fetch('/api/settings/app')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status !== 'success' || !data.settings) return;
+            if (!data.settings.generate_pdf_set) {
+                // One-time migration: push the cached local value to the server
+                const cached = localStorage.getItem('disk_hunter_pdf');
+                if (cached !== null) {
+                    generatePdfSetting = cached === 'true';
+                    fetch('/api/settings/app', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ generate_pdf: generatePdfSetting })
+                    }).catch(() => {});
+                    return;
+                }
+            }
+            generatePdfSetting = data.settings.generate_pdf === true;
+            localStorage.setItem('disk_hunter_pdf', generatePdfSetting);
+        })
+        .catch(() => {
+            // Offline fallback: keep the localStorage cache value
+        });
+}
+loadGeneratePdfSetting();
 
 document.addEventListener('dh-language-changed', () => {
     window.applyLocalization();
@@ -30,8 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetTab = btn.getAttribute('data-shred-tab');
             if (activeShredTab === targetTab) return;
 
-            // Clear previous selections to prevent mixing incompatible targets
-            selectedDrives = [];
             selectedMethod = targetTab === 'nvme' ? 'nvme-user' : 'dodshort';
             const container = document.getElementById('wipe-method-list');
             if (container) { container.dataset.hash = ''; }
@@ -40,7 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
 
             activeShredTab = targetTab;
-            
+
+            // Keep the selection, dropping only drives not eligible for the new mode
+            const dropped = pruneSelectedDrivesForTab(targetTab);
+            if (dropped.length > 0) {
+                const modeName = window.translate(
+                    targetTab === 'nvme' ? 'shred_tab_nvme' : 'shred_tab_standard',
+                    targetTab === 'nvme' ? 'NVMe Secure Erase' : 'Block-Level'
+                );
+                showShredNotice(`Dropped ${dropped.length} drive${dropped.length > 1 ? 's' : ''} not eligible for ${modeName}: ${dropped.join(', ')}`);
+            }
+
             // Update UI config box elements
             updateShredConfigUI();
             
@@ -48,6 +87,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentDisks && currentWipeStatus) {
                 updateShreddingUI();
             }
+
+            // Keep visible cards and checkboxes in sync with the kept selection
+            syncDriveCardSelections();
         });
     });
 
@@ -90,6 +132,49 @@ function formatBytes(bytes, decimals = 1) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+function isDriveEligibleForTab(disk, tab) {
+    if (tab !== 'nvme') return true;
+    const tran = (disk.tran || '').toLowerCase();
+    const name = (disk.name || '').toLowerCase();
+    return tran === 'nvme' || name.includes('nvme');
+}
+
+function pruneSelectedDrivesForTab(tab) {
+    const dropped = [];
+    selectedDrives = selectedDrives.filter(path => {
+        const disk = availableDisksData.find(d => d.path === path);
+        if (disk && !isDriveEligibleForTab(disk, tab)) {
+            dropped.push(path);
+            return false;
+        }
+        return true;
+    });
+    return dropped;
+}
+
+function syncDriveCardSelections() {
+    document.querySelectorAll('#shred-list-container .drive-card').forEach(card => {
+        const checkbox = card.querySelector('.drive-checkbox');
+        if (!checkbox) return;
+        const isSelected = selectedDrives.includes(checkbox.value);
+        checkbox.checked = isSelected;
+        card.classList.toggle('selected', isSelected);
+    });
+    if (typeof updateSelectionCount === 'function') updateSelectionCount('shred-list-container');
+}
+
+function showShredNotice(msg) {
+    const el = document.getElementById('shred-status-notice');
+    if (!el) {
+        customAlert(msg);
+        return;
+    }
+    el.innerText = msg;
+    el.style.display = 'block';
+    if (shredNoticeTimer) clearTimeout(shredNoticeTimer);
+    shredNoticeTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
 }
 
 function updateShredConfigUI() {
@@ -382,18 +467,221 @@ function switchModalView(mode) {
         }
         simple.style.display = '';
     }
+    // Both views render from modalMeta so switching never rebuilds from blank
+    syncModalFieldsFromMeta();
+}
+
+function escapeHtmlAttr(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function getModalMeta(path) {
+    if (!modalMeta[path]) {
+        modalMeta[path] = { datacenter: '', serverName: '', inventoryId: '' };
+    }
+    return modalMeta[path];
+}
+
+function getDistinctServerNames() {
+    const names = [];
+    Object.keys(modalMeta).forEach(path => {
+        const serverName = (modalMeta[path].serverName || '').trim();
+        if (serverName !== '' && !names.includes(serverName)) names.push(serverName);
+    });
+    return names;
+}
+
+function buildModalPdfFields(path, suffix, dcTags) {
+    const meta = getModalMeta(path);
+    // Default the stored datacenter to the first tag so meta matches the select default
+    if (!meta.datacenter && dcTags.length > 0) meta.datacenter = dcTags[0];
+    const options = dcTags.map(tag => `<option value="${escapeHtmlAttr(tag)}"${tag === meta.datacenter ? ' selected' : ''}>${escapeHtmlAttr(tag)}</option>`).join('');
+    return `
+        <div class="modal-pdf-fields" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 130px;">
+                <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('datacenter', 'Datacenter')}</label>
+                <select id="dc-${suffix}" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+                    ${options}
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 130px;">
+                <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('server_name', 'Server Name')}</label>
+                <input type="text" id="srv-${suffix}" placeholder="Optional" value="${escapeHtmlAttr(meta.serverName || '')}" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+            </div>
+            <div style="flex: 1; min-width: 130px;">
+                <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('inventory_id', 'Inventory ID')}</label>
+                <input type="text" id="inv-${suffix}" placeholder="Optional" value="${escapeHtmlAttr(meta.inventoryId || '')}" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
+            </div>
+        </div>
+    `;
+}
+
+function bindModalMetaFields(path) {
+    const fieldSpecs = [
+        { prefix: 'dc', field: 'datacenter' },
+        { prefix: 'srv', field: 'serverName' },
+        { prefix: 'inv', field: 'inventoryId' }
+    ];
+    ['--d', '--s'].forEach(suffix => {
+        const twinSuffix = suffix === '--d' ? '--s' : '--d';
+        fieldSpecs.forEach(spec => {
+            const el = document.getElementById(`${spec.prefix}-${path}${suffix}`);
+            if (!el) return;
+            const twinEl = document.getElementById(`${spec.prefix}-${path}${twinSuffix}`);
+            const sync = () => {
+                const value = el.value.trim();
+                getModalMeta(path)[spec.field] = value;
+                // Mirror into the other view so both stay in sync
+                if (twinEl && twinEl !== el && twinEl.value !== value) {
+                    twinEl.value = value;
+                    if (twinEl.tagName === 'SELECT') twinEl.dispatchEvent(new Event('change'));
+                }
+            };
+            el.addEventListener('input', sync);
+            el.addEventListener('change', sync);
+        });
+    });
+}
+
+function syncModalFieldsFromMeta() {
+    Object.keys(modalMeta).forEach(path => {
+        const meta = modalMeta[path];
+        ['--d', '--s'].forEach(suffix => {
+            const dcSelect = document.getElementById(`dc-${path}${suffix}`);
+            if (dcSelect && meta.datacenter && dcSelect.value !== meta.datacenter) {
+                dcSelect.value = meta.datacenter;
+                dcSelect.dispatchEvent(new Event('change'));
+            }
+            const srvInput = document.getElementById(`srv-${path}${suffix}`);
+            if (srvInput && srvInput.value !== (meta.serverName || '')) {
+                srvInput.value = meta.serverName || '';
+            }
+            const invInput = document.getElementById(`inv-${path}${suffix}`);
+            if (invInput && invInput.value !== (meta.inventoryId || '')) {
+                invInput.value = meta.inventoryId || '';
+            }
+        });
+    });
+}
+
+function buildBulkAssignmentToolbar(dcTags) {
+    const dcOptions = dcTags.map(tag => `<option value="${escapeHtmlAttr(tag)}">${escapeHtmlAttr(tag)}</option>`).join('');
+    const driveChecks = selectedDrives.map(path =>
+        `<label class="modal-bulk-drive"><input type="checkbox" class="modal-bulk-drive-check" value="${escapeHtmlAttr(path)}" checked> <span>${escapeHtmlAttr(path)}</span></label>`
+    ).join('');
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'modal-bulk-toolbar';
+    toolbar.innerHTML = `
+        <div class="modal-bulk-row">
+            <label class="modal-bulk-selectall"><input type="checkbox" id="bulk-select-all" checked> <span>All</span></label>
+            <div class="modal-bulk-field">
+                <label>${window.translate('datacenter', 'Datacenter')}</label>
+                <select id="bulk-dc">${dcOptions}</select>
+            </div>
+            <div class="modal-bulk-field">
+                <label>${window.translate('server_name', 'Server Name')}</label>
+                <input type="text" id="bulk-server" placeholder="Optional">
+            </div>
+            <div class="modal-bulk-field">
+                <label>Select drives of server</label>
+                <select id="bulk-server-filter"></select>
+            </div>
+            <div class="modal-bulk-actions">
+                <button type="button" id="bulk-apply-selected">Apply to selected</button>
+                <button type="button" id="bulk-apply-all">Apply to all drives</button>
+            </div>
+        </div>
+        <div class="modal-bulk-drives" id="bulk-drive-checks">${driveChecks}</div>
+    `;
+
+    const masterCheck = toolbar.querySelector('#bulk-select-all');
+    const driveChecksWrap = toolbar.querySelector('#bulk-drive-checks');
+    const dcSelect = toolbar.querySelector('#bulk-dc');
+    const serverInput = toolbar.querySelector('#bulk-server');
+    const serverFilter = toolbar.querySelector('#bulk-server-filter');
+
+    function refreshServerFilterOptions() {
+        const names = getDistinctServerNames();
+        serverFilter.innerHTML = `<option value="">--</option>` + names.map(name => `<option value="${escapeHtmlAttr(name)}">${escapeHtmlAttr(name)}</option>`).join('');
+    }
+    refreshServerFilterOptions();
+
+    function refreshMasterState() {
+        const checks = Array.from(driveChecksWrap.querySelectorAll('.modal-bulk-drive-check'));
+        const allChecked = checks.length > 0 && checks.every(cb => cb.checked);
+        masterCheck.checked = allChecked;
+        masterCheck.indeterminate = !allChecked && checks.some(cb => cb.checked);
+    }
+
+    masterCheck.addEventListener('change', () => {
+        driveChecksWrap.querySelectorAll('.modal-bulk-drive-check').forEach(cb => { cb.checked = masterCheck.checked; });
+    });
+
+    driveChecksWrap.addEventListener('change', (e) => {
+        if (e.target.classList.contains('modal-bulk-drive-check')) refreshMasterState();
+    });
+
+    // Selecting a server checks only its drives and preselects their datacenter
+    serverFilter.addEventListener('change', () => {
+        const serverName = serverFilter.value;
+        if (!serverName) return;
+        let datacenter = '';
+        driveChecksWrap.querySelectorAll('.modal-bulk-drive-check').forEach(cb => {
+            const meta = modalMeta[cb.value] || {};
+            const isMatch = (meta.serverName || '').trim() === serverName;
+            cb.checked = isMatch;
+            if (isMatch && meta.datacenter && !datacenter) datacenter = meta.datacenter;
+        });
+        if (datacenter && dcSelect.value !== datacenter) {
+            dcSelect.value = datacenter;
+            dcSelect.dispatchEvent(new Event('change'));
+        }
+        refreshMasterState();
+    });
+
+    function applyBulkAssign(paths) {
+        const datacenter = dcSelect ? dcSelect.value : '';
+        const serverName = serverInput ? serverInput.value.trim() : '';
+        paths.forEach(path => {
+            const meta = getModalMeta(path);
+            if (datacenter) meta.datacenter = datacenter;
+            meta.serverName = serverName;
+        });
+        syncModalFieldsFromMeta();
+        refreshServerFilterOptions();
+    }
+
+    toolbar.querySelector('#bulk-apply-selected').addEventListener('click', () => {
+        const targets = Array.from(driveChecksWrap.querySelectorAll('.modal-bulk-drive-check:checked')).map(cb => cb.value);
+        if (targets.length === 0) {
+            customAlert("No drives checked for bulk assignment.");
+            return;
+        }
+        applyBulkAssign(targets);
+    });
+
+    toolbar.querySelector('#bulk-apply-all').addEventListener('click', () => {
+        applyBulkAssign(selectedDrives.slice());
+    });
+
+    return toolbar;
 }
 
 function showConfirmationModal() {
+    // Derive the selection from the DOM checkboxes right before validation
+    selectedDrives = Array.from(document.querySelectorAll('#shred-list-container .drive-checkbox:checked')).map(cb => cb.value);
     if (selectedDrives.length === 0) {
         customAlert("Please select at least one available drive to wipe.");
         return;
     }
     console.log("Showing confirmation modal. Selected drives:", selectedDrives);
 
-    const generatePdf = localStorage.getItem('disk_hunter_pdf') === 'true';
     let dcTags = JSON.parse(localStorage.getItem('dh_dc_tags')) || ['DatacenterX'];
-    let options = dcTags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
 
     const countEl = document.getElementById('modal-drive-count');
     if (countEl) countEl.innerText = `${selectedDrives.length} drive${selectedDrives.length > 1 ? 's' : ''} selected`;
@@ -424,27 +712,9 @@ function showConfirmationModal() {
 
         let extraInputsDetailed = "";
         let extraInputsSimple = "";
-        if (generatePdf) {
-            const tpl = (suffix) => `
-                <div class="modal-pdf-fields" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 130px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('datacenter', 'Datacenter')}</label>
-                        <select id="dc-${suffix}" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
-                            ${options}
-                        </select>
-                    </div>
-                    <div style="flex: 1; min-width: 130px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('server_name', 'Server Name')}</label>
-                        <input type="text" id="srv-${suffix}" placeholder="Optional" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
-                    </div>
-                    <div style="flex: 1; min-width: 130px;">
-                        <label style="font-size: 11px; color: var(--text-muted); display:block; margin-bottom:4px;">${window.translate('inventory_id', 'Inventory ID')}</label>
-                        <input type="text" id="inv-${suffix}" placeholder="Optional" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px;">
-                    </div>
-                </div>
-            `;
-            extraInputsDetailed = tpl(disk.path + '--d');
-            extraInputsSimple = tpl(disk.path + '--s');
+        if (generatePdfSetting) {
+            extraInputsDetailed = buildModalPdfFields(disk.path, disk.path + '--d', dcTags);
+            extraInputsSimple = buildModalPdfFields(disk.path, disk.path + '--s', dcTags);
         }
 
         detailedView.innerHTML += `
@@ -476,6 +746,16 @@ function showConfirmationModal() {
     list.appendChild(detailedView);
     list.appendChild(simpleView);
 
+    // Metadata inputs write into modalMeta; both views render from it
+    selectedDrives.forEach(path => bindModalMetaFields(path));
+
+    // Bulk assignment toolbar, only shown when the Generate Cert metadata fields are shown
+    const toolbarWrap = document.getElementById('modal-bulk-toolbar-container');
+    if (toolbarWrap) {
+        toolbarWrap.innerHTML = '';
+        if (generatePdfSetting) toolbarWrap.appendChild(buildBulkAssignmentToolbar(dcTags));
+    }
+
     modalViewMode = 'detailed';
     document.getElementById('btn-view-detailed').classList.add('active');
     document.getElementById('btn-view-simple').classList.remove('active');
@@ -487,6 +767,8 @@ function showConfirmationModal() {
 
 function hideModal() {
     document.getElementById('shred-modal').classList.remove('active');
+    // Reset modal metadata when the modal is closed, cancelled, or the wipe is confirmed
+    modalMeta = {};
 }
 
 async function executeWipe() {
@@ -495,7 +777,6 @@ async function executeWipe() {
     const btn = document.getElementById('btn-confirm');
     
     const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
-    const generatePdf = localStorage.getItem('disk_hunter_pdf') === 'true';
     
     const debugConsole = document.getElementById('debug-console');
     const debugOutput = document.getElementById('debug-output');
@@ -509,17 +790,17 @@ async function executeWipe() {
     btn.disabled = true;
 
     try {
+        // Read drive metadata from modalMeta regardless of which view is visible
         let driveObjects = selectedDrives.map(path => {
-            const suffix = modalViewMode === 'simple' ? '--s' : '--d';
-            const srvInput = document.getElementById(`srv-${path}${suffix}`);
-            const invInput = document.getElementById(`inv-${path}${suffix}`);
-            const dcSelect = document.getElementById(`dc-${path}${suffix}`);
+            const meta = modalMeta[path] || {};
+            const serverName = (meta.serverName || '').trim();
+            const inventoryId = (meta.inventoryId || '').trim();
             
             return {
                 path: path,
-                server_name: (generatePdf && srvInput && srvInput.value.trim() !== '') ? srvInput.value.trim() : 'N/A',
-                inventory_id: (generatePdf && invInput && invInput.value.trim() !== '') ? invInput.value.trim() : 'N/A',
-                datacenter: (generatePdf && dcSelect) ? dcSelect.value : 'N/A'
+                server_name: (generatePdfSetting && serverName !== '') ? serverName : 'N/A',
+                inventory_id: (generatePdfSetting && inventoryId !== '') ? inventoryId : 'N/A',
+                datacenter: (generatePdfSetting && meta.datacenter) ? meta.datacenter : 'N/A'
             };
         });
 
@@ -527,7 +808,7 @@ async function executeWipe() {
             drives: driveObjects, 
             method: method, 
             verify: verify, 
-            generate_pdf: generatePdf,
+            generate_pdf: generatePdfSetting,
             company_name: localStorage.getItem('dh_comp_name') || 'Disk Hunter',
             company_address: localStorage.getItem('dh_comp_addr') || 'N/A',
             company_phone: localStorage.getItem('dh_comp_phone') || 'N/A',

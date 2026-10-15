@@ -1,3 +1,5 @@
+let currentHistory = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchHistory();
 
@@ -8,12 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnExport) {
         btnExport.addEventListener('click', exportToCSV);
     }
-
 });
 
 async function fetchHistory() {
     const list = document.getElementById('history-list');
-    list.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+    list.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
     
     try {
         const response = await fetch('/api/iso-history');
@@ -22,39 +23,40 @@ async function fetchHistory() {
         if (data.status === 'success') {
             renderHistory(data.history);
         } else {
-            list.innerHTML = `<tr><td colspan="4" style="color: var(--accent-red);">Error: ${data.message}</td></tr>`;
+            list.innerHTML = `<tr><td colspan="5" style="color: var(--accent-red);">Error: ${HistoryCommon.escapeHtml(data.message)}</td></tr>`;
         }
     } catch (error) {
         console.error("Failed to fetch history:", error);
-        list.innerHTML = '<tr><td colspan="4" style="color: var(--accent-red);">Failed to load history due to a network error.</td></tr>';
+        list.innerHTML = '<tr><td colspan="5" style="color: var(--accent-red);">Failed to load history due to a network error.</td></tr>';
     }
 }
 
 function renderHistory(history) {
     const list = document.getElementById('history-list');
     list.innerHTML = '';
+    currentHistory = history || [];
     
-    if (!history || history.length === 0) {
-        list.innerHTML = '<tr><td colspan="4">No history found.</td></tr>';
+    if (currentHistory.length === 0) {
+        list.innerHTML = '<tr><td colspan="5">No history found.</td></tr>';
         return;
     }
     
-    history.forEach(entry => {
-        let statusClass = 'status-ok';
-        if (entry.status && (entry.status.toLowerCase() === 'failed' || entry.status.toLowerCase() === 'error')) {
-            statusClass = 'status-failing';
-        } else if (entry.status && entry.status.toLowerCase() === 'started') {
-            statusClass = 'status-pre-fail'; 
-        }
+    currentHistory.forEach(entry => {
+        const details = [];
+        if (entry.filename) details.push('File: ' + entry.filename);
+        if (entry.url) details.push('URL: ' + entry.url);
+        if (entry.size_bytes != null) details.push('Size: ' + entry.size_bytes + ' bytes');
+
+        // ISO entries have no per-entry log endpoint; the modal shows entry.output if present
+        const options = {
+            title: 'ISO Log Details',
+            details: details
+        };
 
         const tr = document.createElement('tr');
+        tr.innerHTML = HistoryCommon.renderLogHeader(entry, { details: details });
+        HistoryCommon.makeRowClickable(tr, entry, options);
 
-        tr.innerHTML = `
-            <td>${entry.timestamp || 'N/A'}</td>
-            <td>${entry.event || 'N/A'}</td>
-            <td>${entry.username || 'Unknown'}</td>
-            <td><span class="status-badge ${statusClass}">${entry.status || 'N/A'}</span></td>
-        `;
         list.appendChild(tr);
     });
 }
@@ -77,21 +79,21 @@ function clearHistory() {
 }
 
 function exportToCSV() {
-    const list = document.getElementById('history-list');
-    const rows = Array.from(list.querySelectorAll('tr'));
-    if (rows.length === 0 || rows[0].innerText.includes('No history found') || rows[0].innerText.includes('Loading history...')) {
+    if (currentHistory.length === 0) {
         customAlert('No history data available to export.');
         return;
     }
 
     let csvContent = "Date / Time,Event,User (IP),Status\n";
 
-    rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if (cols.length === 4) {
-            const rowData = Array.from(cols).map(col => `"${String(col.innerText).replace(/"/g, '""')}"`);
-            csvContent += rowData.join(",") + "\n";
-        }
+    currentHistory.forEach(entry => {
+        const rowData = [
+            HistoryCommon.formatTimestamp(entry.timestamp),
+            entry.event || 'N/A',
+            entry.username || 'N/A',
+            entry.status || 'N/A'
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`);
+        csvContent += rowData.join(",") + "\n";
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
