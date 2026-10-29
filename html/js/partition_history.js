@@ -85,7 +85,7 @@ function exportToCSV() {
         return;
     }
 
-    let csvContent = "Date & Time,Event,Drive,S/N,Action,Parameters,User (IP),Status\n";
+    let csvContent = "Date & Time,Event,Drive,S/N,Inventory ID,Action,Parameters,User (IP),Status\n";
 
     currentHistory.forEach(entry => {
         const rowData = [
@@ -93,6 +93,7 @@ function exportToCSV() {
             entry.event || 'N/A',
             entry.drive || 'N/A',
             entry.serial || 'N/A',
+            entry.inventory_id || 'N/A',
             entry.action || 'N/A',
             entry.params && Array.isArray(entry.params) ? entry.params.join(', ') : 'None',
             entry.username || 'N/A',

@@ -1,17 +1,59 @@
 window.localesData = null;
 window.currentLanguage = localStorage.getItem('dh_lang') || 'en';
 
+// --- Cross-navigation asset cache (stale-while-revalidate) ---
+// locales.json and the shared component fragments are static between deploys.
+// They are painted instantly from localStorage (zero round trips on repeat
+// navigation) and revalidated in the background; a changed response updates
+// the cache so the next navigation sees the new content. Pages that are
+// already rendered re-apply translations/re-render via dh-language-changed.
+const DH_LOCALES_KEY = 'dh_cache_locales';
+
+function readTextCache(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function writeTextCache(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* storage full or blocked */ }
+}
+
 function initLocalization(callback) {
-    fetch('/locales.json')
-        .then(res => res.json())
-        .then(data => {
-            window.localesData = data;
+    let booted = false;
+    const boot = () => { if (!booted) { booted = true; if (callback) callback(); } };
+
+    // 1. Instant paint from the previous navigation's copy
+    const cached = readTextCache(DH_LOCALES_KEY);
+    if (cached) {
+        try {
+            window.localesData = JSON.parse(cached);
             window.applyLocalization();
-            if (callback) callback();
+            boot();
+        } catch (e) {
+            window.localesData = null; // corrupt cache: fall through to network
+        }
+    }
+
+    // 2. Background revalidate so deploys propagate without extra latency
+    fetch('/locales.json')
+        .then(res => res.text())
+        .then(text => {
+            const data = JSON.parse(text);
+            const serialized = JSON.stringify(data);
+            if (serialized !== cached) {
+                writeTextCache(DH_LOCALES_KEY, serialized);
+                const hadData = !!window.localesData;
+                window.localesData = data;
+                window.applyLocalization();
+                // Refresh already-rendered dynamic content once, the same way
+                // a language switch does, so new/changed strings show up.
+                if (hadData) {
+                    document.dispatchEvent(new CustomEvent('dh-language-changed', { detail: window.currentLanguage }));
+                }
+            }
+            boot();
         })
         .catch(err => {
             console.error("Failed to load locales.json", err);
-            if (callback) callback();
+            boot();
         });
 }
 
@@ -25,8 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
         loadComponent('header-container', 'components/header.html', () => {
             initWebSocket();
             updateTime();
-            setInterval(updateTime, 1000);
+            scheduleClockUpdates();
             
+            // Root disk usage pill: fetch once and refresh every 30s
+            loadRootUsageHeaderPill();
+            setInterval(loadRootUsageHeaderPill, 30000);
+            
+            initNotificationSystem();
+            updateNotifBadge();
             initGlobalTooltips();
             initGlobalConfirm();
             initLayoutToggle();
@@ -205,29 +253,67 @@ function loadComponent(elementId, url, callback) {
     if (!container) {
         return;
     }
+    const cacheKey = 'dh_cache_frag_' + url;
+    let paintedFromCache = false;
+
+    // Instant paint from the previous navigation's copy (zero round trips)
+    const cached = readTextCache(cacheKey);
+    if (cached) {
+        container.innerHTML = cached;
+        paintedFromCache = true;
+        if (callback) callback();
+    }
+
     fetch(url)
         .then(response => response.text())
         .then(data => {
-            container.innerHTML = data;
-            if (callback) {
-                callback();
+            writeTextCache(cacheKey, data);
+            if (!paintedFromCache) {
+                container.innerHTML = data;
+                if (callback) callback();
             }
+            // Cache hit + changed content: the cache is updated above; the
+            // live DOM keeps the current markup so per-component init
+            // callbacks never run twice on one page. The next navigation
+            // injects the new fragment.
         })
-        .catch(error => console.error(`Failed to load component ${url}:`, error));
+        .catch(error => {
+            if (!paintedFromCache) {
+                console.error(`Failed to load component ${url}:`, error);
+            }
+            // Cache hit + network failure: keep the painted copy (offline
+            // resilience) and stay silent.
+        });
 }
 
 function initFooterTools() {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
-    fetch('/tools.json')
-        .then(res => res.json())
-        .then(data => {
-            const toolsContainer = document.getElementById('footer-tools-container');
-            if (toolsContainer && data[currentPage] && data[currentPage].length > 0) {
+    const cacheKey = 'dh_cache_frag_/tools.json';
+
+    const renderTools = (text) => {
+        const toolsContainer = document.getElementById('footer-tools-container');
+        if (!toolsContainer) return;
+        try {
+            const data = JSON.parse(text);
+            if (data[currentPage] && data[currentPage].length > 0) {
                 const toolsList = data[currentPage].map(tool => `<a href="${tool.url}" target="_blank" rel="noopener noreferrer">${tool.name}</a>`).join(' / ');
                 toolsContainer.innerHTML = `Thanks to: ${toolsList}`;
-            } else if (toolsContainer) {
+            } else {
                 toolsContainer.innerHTML = '';
             }
+        } catch (e) {
+            console.error("Failed to parse tools.json", e);
+        }
+    };
+
+    const cached = readTextCache(cacheKey);
+    if (cached) renderTools(cached);
+
+    fetch('/tools.json')
+        .then(res => res.text())
+        .then(text => {
+            writeTextCache(cacheKey, text);
+            if (text !== cached) renderTools(text);
         })
         .catch(err => console.error("Failed to load tools.json", err));
 }
@@ -247,8 +333,9 @@ function setActiveSidebarLink() {
         'speedtest_history.html': 'nav-speedtest-history',
         'iso.html': 'nav-iso',
         'iso_history.html': 'nav-iso-history',
-        'data-management.html': 'nav-data-management',
-        'temperature.html': 'nav-temperature',
+        'data-management.html': 'nav-settings',
+        'temperature.html': 'nav-settings',
+        'notifications.html': 'nav-settings',
         'settings.html': 'nav-settings'
     };
     
@@ -262,6 +349,8 @@ function setActiveSidebarLink() {
     };
     
     // Default to index if not found
+    // Temperature, Data Management and the Notifications page now live under
+    // Settings (header bell for notifications): highlight Settings there.
     const activeId = pageIdMap[currentPage] || (currentPage === 'network.html' ? '' : 'nav-index');
     const activeLink = document.getElementById(activeId);
     if (activeLink) {
@@ -285,13 +374,35 @@ function setActiveSidebarLink() {
 }
 
 
+async function loadRootUsageHeaderPill() {
+    const el = document.getElementById('sys-root-usage');
+    if (!el || document.hidden) return;
+    try {
+        const res = await fetch('/api/system/root-usage');
+        const data = await res.json();
+        if (data && data.status === 'success') {
+            const usedGb = (data.used_bytes / 1073741824).toFixed(0);
+            const totalGb = (data.total_bytes / 1073741824).toFixed(0);
+            const text = `Disk ${data.percent_used}% (${usedGb}/${totalGb} GB)`;
+            if (el.innerText !== text) el.innerText = text;
+            el.title = `Root disk usage: ${data.percent_used}% (${usedGb} GB used of ${totalGb} GB)`;
+        } else {
+            if (el.innerText !== 'Disk --') el.innerText = 'Disk --';
+        }
+    } catch (e) {
+        if (el.innerText !== 'Disk --') el.innerText = 'Disk --';
+    }
+}
+
 function updateSystemInfoUI(data) {
     const hostnameEl = document.getElementById('sys-hostname');
     const tempEl = document.getElementById('sys-temp');
     const ipEl = document.getElementById('sys-ip');
 
-    if(hostnameEl) hostnameEl.innerText = data.hostname || 'Unknown';
-    if(ipEl) ipEl.innerText = data.ip || 'Unknown';
+    // Batched writes: each element is touched only when its text changed, so
+    // an idle WS tick costs zero DOM mutations.
+    if (hostnameEl && hostnameEl.innerText !== (data.hostname || 'Unknown')) hostnameEl.innerText = data.hostname || 'Unknown';
+    if (ipEl && ipEl.innerText !== (data.ip || 'Unknown')) ipEl.innerText = data.ip || 'Unknown';
 
     // Temperature: render one pill per configured device. The legacy single
     // #sys-temp span is preserved for the first reading; extra devices are
@@ -301,35 +412,51 @@ function updateSystemInfoUI(data) {
     const temps = Array.isArray(data.temperatures) ? data.temperatures : [];
 
     if (tempEl) {
+        let firstText;
         if (!collectionEnabled) {
-            tempEl.innerText = 'Disabled';
+            firstText = 'Disabled';
         } else if (temps.length === 0) {
-            tempEl.innerText = 'N/A';
+            firstText = 'N/A';
         } else {
             const first = temps[0];
-            tempEl.innerText = (first.temp !== null && first.temp !== undefined) ? (first.temp + '°C') : 'N/A';
+            firstText = (first.temp !== null && first.temp !== undefined) ? (first.temp + '\u00B0C') : 'N/A';
             // Keep the label showing the friendly device name when multiple sensors exist
             if (temps.length > 1) {
-                tempEl.innerText = `${first.name}: ${first.temp}°C`;
+                firstText = `${first.name}: ${first.temp}\u00B0C`;
             }
         }
+        if (tempEl.innerText !== firstText) tempEl.innerText = firstText;
     }
 
-    // Inject additional temp pills for any extra configured devices
+    // Extra temp pills: reuse existing elements in place (no remove/recreate
+    // churn on every WS tick); add, update or remove only on real changes.
     if (tempContainer) {
-        // Remove previously injected extra pills (they are siblings of the link)
         const parent = tempContainer.parentNode;
-        if (parent) parent.querySelectorAll('.extra-temp-pill').forEach(el => el.remove());
-        if (collectionEnabled && temps.length > 1) {
-            temps.slice(1).forEach(t => {
-                const pill = document.createElement('span');
+        if (!parent) return;
+        const extras = (collectionEnabled && temps.length > 1) ? temps.slice(1) : [];
+        const existing = Array.from(parent.querySelectorAll('.extra-temp-pill'));
+
+        extras.forEach((t, i) => {
+            const tempText = (t.temp !== null && t.temp !== undefined)
+                ? `${t.name}: ${t.temp}\u00B0C`
+                : `${t.name}: N/A`;
+            let pill = existing[i];
+            if (!pill) {
+                pill = document.createElement('span');
                 pill.className = 'info-pill extra-temp-pill';
                 pill.style.marginLeft = '6px';
-                pill.innerText = (t.temp !== null && t.temp !== undefined)
-                    ? `${t.name}: ${t.temp}°C`
-                    : `${t.name}: N/A`;
+                pill.innerHTML = `<span class="temp-icon">\uD83C\uDF21\uFE0F</span> `;
+                const textSpan = document.createElement('span');
+                textSpan.className = 'temp-text';
+                pill.appendChild(textSpan);
                 parent.insertBefore(pill, tempContainer.nextSibling);
-            });
+            }
+            const textEl = pill.querySelector('.temp-text');
+            if (textEl && textEl.textContent !== tempText) textEl.textContent = tempText;
+        });
+
+        for (let i = extras.length; i < existing.length; i++) {
+            existing[i].remove();
         }
     }
 }
@@ -351,6 +478,16 @@ let wsFlushScheduled = false;
 let wsLastCacheWrite = 0;
 let wsLatestSystemInfo = null;
 let wsLatestSystemInfoJson = '';
+window.latestBusyDisks = new Set();
+
+function isDiskBusy(diskName) {
+    return window.latestBusyDisks.has(diskName);
+}
+
+function updateBusyDisks(payload) {
+    const busy = (payload && payload.busy_disks) || [];
+    window.latestBusyDisks = new Set(busy);
+}
 
 function processWebSocketData(data, immediate = false) {
     let hasPending = false;
@@ -422,6 +559,7 @@ function initWebSocket() {
                 sessionStorage.setItem('dh_ws_cache', JSON.stringify(cacheData));
             }
 
+            updateBusyDisks(data);
             processWebSocketData(data);
         } catch (e) {
             console.error("WebSocket message parse error", e);
@@ -440,20 +578,39 @@ function initWebSocket() {
 }
 
 
+let clockTooltipRefreshedAt = 0;
+
+// Self-correcting 1 Hz scheduler aligned to the wall-clock second boundary:
+// the label only ever changes on a second tick, so a drifting interval that
+// fires between boundaries would either double-update or skip text changes.
+function scheduleClockUpdates() {
+    if (window.__dhClockTimer) clearTimeout(window.__dhClockTimer);
+    window.__dhClockTimer = setTimeout(() => {
+        updateTime();
+        scheduleClockUpdates();
+    }, 1000 - (Date.now() % 1000) + 2);
+}
+
 function updateTime() {
     if (document.hidden) return; // skip DOM writes while hidden; refreshed on visibilitychange
+    const timeEl = document.getElementById('sys-time');
+    if (!timeEl) return;
+
     const now = new Date();
     const timeString = now.toLocaleTimeString('en-US', { hour12: false });
     const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const timeEl = document.getElementById('sys-time');
-    
-    if (timeEl) {
-        timeEl.innerText = `${dateString}, ${timeString}`;
-        
+    const newText = `${dateString}, ${timeString}`;
+    // Only touch the DOM when the displayed second actually changed
+    if (timeEl.innerText !== newText) timeEl.innerText = newText;
+
+    // Tooltip contents change only on DST transitions; refresh at most once
+    // a minute instead of rewriting the attribute every second.
+    const nowMs = performance.now();
+    if (nowMs - clockTooltipRefreshedAt > 60000) {
+        clockTooltipRefreshedAt = nowMs;
         const utcTime = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'UTC' });
         const estTime = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' });
         const currentTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        
         timeEl.parentElement.setAttribute('data-tooltip', `<strong>System Time</strong>UTC: ${utcTime}<br>EST: ${estTime}<br>Current: ${currentTz}`);
     }
 }
@@ -831,6 +988,22 @@ window.diskService = new DiskService();
 window.speedtestService = new SpeedtestService();
 window.partitionService = new PartitionService();
 
+// Best-effort persistence of a serial -> Inventory ID mapping. Used by the
+// Settings Inventory ID Manager and automatically by the shredding flow
+// when a wipe is started with an Inventory ID, so the mapping is remembered
+// for the next wipe of the same drive.
+window.saveInventoryMapping = function(serial, inventoryId) {
+    if (!serial || !inventoryId) return Promise.resolve(false);
+    return fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial: String(serial), inventory_id: String(inventoryId) })
+    })
+        .then(res => res.json())
+        .then(data => data.status === 'success')
+        .catch(() => false);
+};
+
 function fetchFeatures() {
     fetch('/api/system/features')
         .then(res => res.json())
@@ -853,6 +1026,8 @@ function fetchFeatures() {
             }
             if (data.ENABLE_DATA_MANAGEMENT === false) {
                 document.getElementById('nav-data-management')?.setAttribute('style', 'display: none !important');
+                // Data Management moved under Settings: hide its settings row too
+                document.getElementById('settings-row-data-management')?.setAttribute('style', 'display: none !important');
             }
             if (data.ENABLE_NETWORK_SHARE === false) {
                 document.getElementById('nav-network-share')?.setAttribute('style', 'display: none !important');
@@ -1067,4 +1242,221 @@ function updateSelectionCount(containerId) {
     const checked = container.querySelectorAll('.drive-checkbox:checked');
     const countEl = document.getElementById(`count-${containerId}`);
     if (countEl) countEl.innerText = `${checked.length} selected`;
+}
+
+// --- Global Notification System ---
+const DH_NOTIF_KEY = 'dh_notifications';
+const DH_NOTIF_READ_KEY = 'dh_notifications_read_ts';
+const DH_NOTIF_MAX = 200;
+const DH_NOTIF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // keep a week of history
+
+function getNotifications() {
+    try {
+        const list = JSON.parse(localStorage.getItem(DH_NOTIF_KEY)) || [];
+        return Array.isArray(list) ? list : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveNotifications(list) {
+    list.sort((a, b) => b.ts - a.ts);
+    const cut = Date.now() - DH_NOTIF_MAX_AGE_MS;
+    localStorage.setItem(DH_NOTIF_KEY, JSON.stringify(list
+        .filter(n => n.ts >= cut)
+        .slice(0, DH_NOTIF_MAX)));
+}
+
+function getNotifUnreadCount() {
+    const lastRead = parseInt(localStorage.getItem(DH_NOTIF_READ_KEY) || '0', 10);
+    return getNotifications().filter(n => n.ts > lastRead).length;
+}
+
+function markAllNotificationsRead() {
+    localStorage.setItem(DH_NOTIF_READ_KEY, String(Date.now()));
+    updateNotifBadge();
+}
+
+function updateNotifBadge() {
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    const count = getNotifUnreadCount();
+    if (count > 0) {
+        badge.style.display = 'flex';
+        badge.innerText = count > 99 ? '99+' : String(count);
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Push a notification into the shared store and surface it on the current page.
+function pushNotification(type, message, severity = 'info', opts = {}) {
+    const entry = {
+        id: 'n' + Date.now() + Math.random().toString(36).slice(2, 7),
+        ts: Date.now(),
+        type: type,
+        message: message,
+        severity: severity
+    };
+    const list = getNotifications();
+    list.push(entry);
+    saveNotifications(list);
+    document.dispatchEvent(new CustomEvent('dh-notification', { detail: entry }));
+    updateNotifBadge();
+    // On the notifications page itself the list shows the entry, skip the banner.
+    if (window.location.pathname.split('/').pop() !== 'notifications.html') {
+        window.showNotificationBanner(entry.message, entry.severity);
+    }
+    if (opts && opts.silent) { /* reserved for future use */ }
+    return entry;
+}
+
+// Temporary high-visibility banner at the top of the page.
+window.showNotificationBanner = function(message, severity = 'info') {
+    if (document.hidden) return;
+    let banner = document.getElementById('global-notification-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'global-notification-banner';
+        banner.className = 'global-notification-banner';
+        document.body.appendChild(banner);
+    }
+    banner.className = 'global-notification-banner severity-' + severity + ' visible';
+    banner.innerHTML = `
+        <span class="banner-close" title="Dismiss">&#10005;</span>
+        <span class="banner-text"></span>`;
+    banner.querySelector('.banner-text').textContent = message;
+    clearTimeout(window.__dhBannerTimer);
+    window.__dhBannerTimer = setTimeout(() => {
+        banner.classList.remove('visible');
+    }, 6000);
+    banner.querySelector('.banner-close').addEventListener('click', () => {
+        clearTimeout(window.__dhBannerTimer);
+        banner.classList.remove('visible');
+    });
+};
+
+// Derive notifications from the existing WebSocket section events.
+// Two payload shapes exist:
+//  - task maps ({ id: { status } }) for ISO downloads/writes: a transition
+//    from a running state into a terminal state becomes a notification.
+//  - running-job lists ({ wiping: [...] } / { running_tests: [...] }): a job
+//    vanishing from the list means it ended; the persistent history endpoint
+//    then says whether it completed, failed, or hit a problematic disk.
+const DH_RUNNING_STATES = ['running', 'preparing', 'starting', 'pending', 'downloading', 'writing', 'in_progress'];
+const notifPrevStatus = {}; // section -> { id -> status }
+
+function notifScanStatusMap(section, label, payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+    const prev = notifPrevStatus[section] || {};
+    const next = {};
+    Object.entries(payload).forEach(([id, task]) => {
+        if (!task || typeof task !== 'object') return;
+        const st = String(task.status || '').toLowerCase();
+        next[id] = st;
+        const prevSt = prev[id];
+        if (!prevSt) return; // ignore first sight (dedupe on page load / reconnect)
+        if (DH_RUNNING_STATES.indexOf(prevSt) === -1) return; // only flag running -> terminal
+        const description = task.filename
+            ? task.filename
+            : (task.device ? task.device.replace(/^\/dev\//, '') : (task.drive || id));
+        if (st === 'completed') {
+            pushNotification(section, label + ' completed: ' + description, 'success');
+        } else if (st === 'error' || st === 'failed') {
+            const detail = task.error ? ' (' + task.error + ')' : '';
+            pushNotification(section, label + ' FAILED: ' + description + detail, 'error');
+        }
+    });
+    notifPrevStatus[section] = next;
+}
+
+function notifScanRunningList(section, label, payload, listField, historyUrl) {
+    const list = payload && Array.isArray(payload[listField]) ? payload[listField] : [];
+    const prev = notifPrevStatus[section] || {};
+    const next = {};
+    list.forEach(job => {
+        if (!job || !job.container) return;
+        next[job.container] = 'running';
+    });
+    Object.keys(prev).forEach(container => {
+        if (!(container in next)) {
+            notifReportJobEnd(section, label, container, historyUrl);
+        }
+    });
+    notifPrevStatus[section] = next;
+}
+
+// Find the newest terminal history entry for a container. History files are
+// append-order (oldest first), so search from the end.
+async function notifFindHistoryEntry(historyUrl, containerName) {
+    try {
+        const res = await fetch(historyUrl);
+        const data = await res.json();
+        const entries = (data && Array.isArray(data.history)) ? data.history : [];
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const entry = entries[i];
+            if (entry && entry.container_name === containerName && entry.status !== 'started') {
+                return entry;
+            }
+        }
+    } catch (e) { /* history unavailable */ }
+    return null;
+}
+
+// A job container vanished from the running list: classify it from the
+// persistent history so completions, failures and problematic disks each
+// get the right severity in the notification and banner.
+async function notifReportJobEnd(section, label, containerName, historyUrl) {
+    let match = await notifFindHistoryEntry(historyUrl, containerName);
+    if (!match) {
+        // The monitor writes the history entry moments after the container
+        // exits; retry once before falling back to a generic message.
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        match = await notifFindHistoryEntry(historyUrl, containerName);
+    }
+    let message = label + ' job ended: ' + containerName;
+    let severity = 'info';
+    if (match) {
+        const st = String(match.status || '').toLowerCase();
+        if (st === 'completed') severity = 'success';
+        else if (st === 'failed') severity = 'error';
+        else if (st === 'stopped' || st === 'aborted') severity = 'warning';
+        if (match.event) message = match.event;
+    }
+    pushNotification(section, message, severity);
+}
+
+function initNotificationSystem() {
+    document.addEventListener('ws-wipe_status', (e) => notifScanRunningList('wipe', 'Wipe', e.detail, 'wiping', '/api/history'));
+    document.addEventListener('ws-speedtest_status', (e) => notifScanRunningList('speedtest', 'Speed test', e.detail, 'running_tests', '/api/speedtest-history'));
+    document.addEventListener('ws-smart_status', (e) => notifScanRunningList('smart', 'SMART test', e.detail, 'running_tests', '/api/smart-history'));
+    document.addEventListener('ws-iso_download_status', (e) => notifScanStatusMap('iso_download', 'ISO download', e.detail));
+    document.addEventListener('ws-iso_write_status', (e) => notifScanStatusMap('iso_write', 'ISO write', e.detail));
+
+    // Problematic disks surfaced in the disks section.
+    document.addEventListener('ws-disks', (e) => {
+        const list = Array.isArray(e.detail) ? e.detail : [];
+        notifScanDiskList(list);
+    });
+}
+
+function notifScanDiskList(list) {
+    (list || []).forEach(disk => {
+        if (!disk || !disk.name) return;
+        const name = disk.name;
+        const issue =
+            disk.warnings ||
+            disk.problematic ||
+            (/fail|warn|no_pm|uncorrect/i.test(String(disk.smart_status || '')) && String(disk.smart_status)) ||
+            (/fail|warn/i.test(String(disk.health_status || '')) && disk.health_status) ||
+            null;
+        const prev = notifPrevStatus['disks'] || {};
+        const prevIssue = prev[name + '__issue'] || null;
+        const currentIssue = issue ? String(issue).trim() : null;
+        if (currentIssue && currentIssue !== prevIssue) {
+            pushNotification('disks', 'Drive warning on ' + name + ': ' + currentIssue, 'warning');
+        }
+        prev[name + '__issue'] = currentIssue;
+        notifPrevStatus['disks'] = prev;
+    });
 }

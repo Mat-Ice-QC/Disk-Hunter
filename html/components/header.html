@@ -7,9 +7,14 @@
 </div>
 <div class="sys-info">
     <div class="info-pill"><span class="time-icon">🕒</span> <span id="sys-time">--</span></div>
+    <a href="data-management.html" class="info-pill disk-pill" data-tooltip="Root disk usage - click for File Browser"><span class="disk-icon">💾</span> <span id="sys-root-usage">--</span></a>
+
     <a href="docs.html" class="header-docs-btn" id="btn-header-docs" data-tooltip="View Documentation">
         <span class="doc-icon">📖</span>
-        <span data-i18n="nav_docs">Documentation</span>
+    </a>
+    <a href="notifications.html" class="header-docs-btn header-notif-btn" id="btn-header-notifications" data-tooltip="View Notifications">
+        <span class="doc-icon">🔔</span>
+        <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
     </a>
     <button class="header-docs-btn" id="btn-layout-toggle" data-tooltip="Toggle Layout">
         <span id="layout-toggle-text">Grid View</span>

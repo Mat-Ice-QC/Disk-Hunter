@@ -14,6 +14,48 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnPrepareAll = document.getElementById('btn-prepare-all-partitions');
     if (btnPrepareAll) btnPrepareAll.addEventListener('click', prepareAllPartitions);
 
+    // --- Delegated drive-card events (one listener per container for the
+    // whole page lifetime instead of per-card listeners on every rebuild) ---
+    const driveList = document.getElementById('drive-list-container');
+    if (driveList) {
+        driveList.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('[data-action]');
+            if (actionBtn) {
+                if (actionBtn.dataset.action === 'create-partition') {
+                    openCreatePartitionModal(actionBtn.dataset.drive);
+                }
+                return;
+            }
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            const card = e.target.closest('.drive-card');
+            if (!card) return;
+            const checkbox = card.querySelector('.drive-checkbox');
+            if (checkbox && !checkbox.disabled) {
+                checkbox.checked = !checkbox.checked;
+                applySpeedtestSelection(card, checkbox);
+            }
+        });
+        driveList.addEventListener('change', (e) => {
+            if (!e.target.classList) return;
+            if (e.target.classList.contains('drive-checkbox')) {
+                applySpeedtestSelection(e.target.closest('.drive-card'), e.target);
+            } else if (e.target.classList.contains('partition-select')) {
+                const card = e.target.closest('.drive-card');
+                const checkbox = card && card.querySelector('.drive-checkbox');
+                if (checkbox && checkbox.checked) selectedDrives[checkbox.value] = e.target.value;
+            }
+        });
+    }
+    const activeList = document.getElementById('active-speedtest-list');
+    if (activeList) {
+        activeList.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('[data-action]');
+            if (actionBtn && actionBtn.dataset.action === 'speed-stop') {
+                stopTest(actionBtn.dataset.container);
+            }
+        });
+    }
+
     // Show/hide API Debug Console based on settings
     const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
     const debugConsole = document.getElementById('debug-console');
@@ -67,7 +109,7 @@ function updateSpeedtestUI() {
         
         const currentStateHash = diskData.disks.map(d => {
             const activeTest = runningTests.find(test => test.drive === d.name || (d.children && d.children.some(c => c.name === test.drive)));
-            return `${d.path}:${activeTest ? activeTest.test_type : 'idle'}`;
+            return `${d.path}:${d.busy ? 1 : 0}:${activeTest ? activeTest.test_type : 'idle'}`;
         }).join('|');
         
         if (currentStateHash !== previousSpeedtestStateHash) {
@@ -111,20 +153,49 @@ async function processNextInQueue() {
     }
 }
 
+// Shared selection state update used by both the delegated card click and
+// the checkbox change event.
+function applySpeedtestSelection(card, checkbox) {
+    if (checkbox.checked) {
+        const sel = card.querySelector('.partition-select');
+        if (sel) {
+            selectedDrives[checkbox.value] = sel.value;
+            card.classList.add('selected');
+        } else {
+            checkbox.checked = false; // Cannot select if no partition
+        }
+    } else {
+        delete selectedDrives[checkbox.value];
+        card.classList.remove('selected');
+    }
+}
+
 function rebuildUI(disks, runningTests) {
     const availContainer = document.getElementById('drive-list-container');
     const activeContainer = document.getElementById('active-speedtest-list');
     const activeSection = document.getElementById('active-speedtests-section');
 
-    availContainer.innerHTML = '';
-    activeContainer.innerHTML = '';
-
     const protectRoot = localStorage.getItem('disk_hunter_protect_root') !== 'false';
     disks = disks.filter(d => !(protectRoot && d.is_root));
+
+    // Keyed card cache: disk.path -> { el, html, parent }. Unchanged cards
+    // keep their elements (and <img>), so one test starting or stopping does
+    // not rebuild every card on the page.
+    if (!window.__speedCardCache) window.__speedCardCache = new Map();
+    const cardCache = window.__speedCardCache;
+    const cachedEls = new Set();
+    cardCache.forEach(entry => cachedEls.add(entry.el));
+    [availContainer, activeContainer].forEach(c => {
+        Array.from(c.children).forEach(child => {
+            if (!cachedEls.has(child)) child.remove(); // placeholders / stale text
+        });
+    });
 
     let activeCount = 0;
     let availableCount = 0;
     unpartitionedDrives = [];
+    const anchors = { avail: null, active: null };
+    const seen = new Set();
 
     disks.forEach(disk => {
         const diskSize = parseInt(disk.size);
@@ -140,15 +211,21 @@ function rebuildUI(disks, runningTests) {
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
         const activeTest = runningTests.find(test => test.drive === driveName || (disk.children && disk.children.some(c => c.name === test.drive)));
+        const cardKey = String(disk.path);
+        seen.add(cardKey);
+
+        let kind;
+        let cardHtml;
+        let wantedClass;
 
         if (activeTest) {
-            const card = document.createElement('div');
-            card.className = 'drive-card wiping-card';
-            card.innerHTML = `
+            kind = 'active';
+            wantedClass = 'drive-card wiping-card';
+            cardHtml = `
                 <div class="drive-header" style="justify-content: space-between; width: 100%;">
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div class="drive-image" style="width: 100px;">
-                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                         </div>
                         <div class="drive-info">
                             <h3 style="font-size: 18px; color: var(--accent-blue); margin-bottom: 5px;">${fullName} <span class="badge" style="background: var(--accent-blue); color: white; margin-left: 10px;">${activeTest.test_type} Test Running</span></h3>
@@ -162,19 +239,34 @@ function rebuildUI(disks, runningTests) {
                         </div>
                     </div>
                     <div style="padding-left: 15px;">
-                        <button onclick="stopTest('${activeTest.container}')" class="btn-action red">Stop Test</button>
+                        <button data-action="speed-stop" data-container="${activeTest.container}" class="btn-action red">Stop Test</button>
                     </div>
                 </div>
             `;
-            activeContainer.appendChild(card);
-            activeCount++;
+        } else if (disk.busy) {
+            kind = 'avail';
+            wantedClass = 'drive-card busy-card';
+            cardHtml = `
+                <div class="drive-header">
+                    <div class="drive-image" style="width: 100px;">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
+                    </div>
+                    <div class="drive-info" style="flex: 1;">
+                        <h3 style="font-size: 18px;">${fullName} <span class="badge" style="background: var(--accent-amber); color: white; margin-left: 10px;">BUSY</span></h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">
+                            <strong>Path:</strong> <span style="color: var(--accent-red);">${disk.path}</span> | 
+                            <strong>Size:</strong> ${formatBytes(diskSize)}
+                        </p>
+                        <p style="font-size: 12px; color: var(--accent-amber); margin-top: 4px;">This drive is active in another operation.</p>
+                    </div>
+                </div>
+            `;
         } else {
-            const card = document.createElement('div');
-            card.className = 'drive-card';
-            if (isReadOnly) card.classList.add('read-only');
+            kind = 'avail';
+            wantedClass = 'drive-card' + (isReadOnly ? ' read-only' : '');
 
             const isChecked = selectedDrives.hasOwnProperty(disk.path) ? 'checked' : '';
-            if (isChecked) card.classList.add('selected');
+            if (isChecked) wantedClass += ' selected';
 
             // Build partitions dropdown
             let partitionUI = '';
@@ -184,16 +276,16 @@ function rebuildUI(disks, runningTests) {
                 partitionUI = `<select class="partition-select" id="part-sel-${driveName}">${options}</select>`;
             } else {
                 if (!isReadOnly) unpartitionedDrives.push(disk.path);
-                partitionUI = `<button class="btn-action" style="width:100%; margin-top: 10px;" onclick="openCreatePartitionModal('${disk.path}', event)">No Partitions - Create One</button>`;
+                partitionUI = `<button class="btn-action" style="width:100%; margin-top: 10px;" data-action="create-partition" data-drive="${disk.path}">No Partitions - Create One</button>`;
             }
 
-            card.innerHTML = `
+            cardHtml = `
                 <div class="drive-header">
                     <div style="padding-right: 10px; display: flex; align-items: center;">
                         <input type="checkbox" class="drive-checkbox" value="${disk.path}" ${isChecked} ${isReadOnly || partitions.length === 0 ? 'disabled' : ''}>
                     </div>
                     <div class="drive-image" style="width: 100px;">
-                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                     </div>
                     <div class="drive-info" style="flex: 1;">
                         <h3 style="font-size: 18px;">${fullName}</h3>
@@ -205,48 +297,46 @@ function rebuildUI(disks, runningTests) {
                     </div>
                 </div>
             `;
+        }
 
-            const checkbox = card.querySelector('.drive-checkbox');
-            if (checkbox) {
-                const toggleSelection = () => {
-                    if (checkbox.checked) {
-                        const sel = document.getElementById(`part-sel-${driveName}`);
-                        if (sel) {
-                            selectedDrives[disk.path] = sel.value;
-                            card.classList.add('selected');
-                        } else {
-                            checkbox.checked = false; // Cannot select if no partition
-                        }
-                    } else {
-                        delete selectedDrives[disk.path];
-                        card.classList.remove('selected');
-                    }
-                };
+        let entry = cardCache.get(cardKey);
+        if (!entry) {
+            const el = document.createElement('div');
+            el.dataset.path = disk.path;
+            entry = { el: el, html: '', parent: null };
+            cardCache.set(cardKey, entry);
+        }
+        if (entry.el.className !== wantedClass) entry.el.className = wantedClass;
+        if (entry.html !== cardHtml) {
+            entry.el.innerHTML = cardHtml;
+            entry.html = cardHtml;
+        }
 
-                card.addEventListener('click', (e) => {
-                    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && !checkbox.disabled) {
-                        checkbox.checked = !checkbox.checked;
-                        toggleSelection();
-                    }
-                });
-                checkbox.addEventListener('change', toggleSelection);
-                
-                const partSelect = card.querySelector('.partition-select');
-                if (partSelect) {
-                    partSelect.addEventListener('change', () => {
-                        if (checkbox.checked) {
-                            selectedDrives[disk.path] = partSelect.value;
-                        }
-                    });
-                }
-            }
-            availContainer.appendChild(card);
-            availableCount++;
+        const targetParent = kind === 'active' ? activeContainer : availContainer;
+        if (entry.parent !== targetParent || entry.el.parentNode !== targetParent) {
+            targetParent.appendChild(entry.el);
+            entry.parent = targetParent;
+        }
+        const anchor = anchors[kind];
+        if (anchor && entry.el.previousElementSibling !== anchor) {
+            targetParent.insertBefore(entry.el, anchor.nextElementSibling);
+        }
+        anchors[kind] = entry.el;
+
+        if (kind === 'active') activeCount++;
+        else availableCount++;
+    });
+
+    // Remove cards for disks that no longer exist
+    cardCache.forEach((entry, key) => {
+        if (!seen.has(key)) {
+            entry.el.remove();
+            cardCache.delete(key);
         }
     });
 
     activeSection.style.display = activeCount > 0 ? 'block' : 'none';
-    if (availableCount === 0 && activeCount === 0) {
+    if (availableCount === 0 && activeCount === 0 && availContainer.children.length === 0) {
         availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives.</p>';
     }
 
@@ -298,8 +388,7 @@ window.prepareAllPartitions = async function() {
 };
 
 let pendingPartitionDrive = null;
-window.openCreatePartitionModal = function(drivePath, event) {
-    event.stopPropagation();
+window.openCreatePartitionModal = function(drivePath) {
     pendingPartitionDrive = drivePath;
     document.getElementById('create-partition-modal').classList.add('active');
 };

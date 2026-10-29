@@ -3,6 +3,18 @@ let currentDrive = null;
 document.addEventListener('DOMContentLoaded', () => {
     fetchDrives();
 
+    // Delegated drive-card clicks: one listener for the whole grid instead
+    // of one onclick per card on every fetchDrives() re-render.
+    const selector = document.getElementById('drive-selector');
+    if (selector) {
+        selector.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return; // checkbox clicks only toggle the box
+            const card = e.target.closest('.drive-card');
+            if (!card || !card.dataset.drive || card.classList.contains('busy-card')) return;
+            selectDrive(card.dataset.drive, card);
+        });
+    }
+
     const unitSelect = document.getElementById('mkpart-unit');
     const sizeInput = document.getElementById('mkpart-size');
     if (unitSelect && sizeInput) {
@@ -41,12 +53,22 @@ async function fetchDrives() {
         const selector = document.getElementById('drive-selector');
 
         if (data.status === 'success' && data.disks.length > 0) {
-            selector.innerHTML = '';
             const filteredDisks = data.disks.filter(disk => !(protectRoot && disk.is_root));
-            filteredDisks.forEach(disk => {
-                const card = document.createElement('div');
-                card.className = 'drive-card';
 
+            // Keyed card cache: disk.path -> { el, html }. Unchanged cards
+            // keep their elements (and <img>) across re-fetches.
+            if (!window.__partCardCache) window.__partCardCache = new Map();
+            const cardCache = window.__partCardCache;
+            const cachedEls = new Set();
+            cardCache.forEach(entry => cachedEls.add(entry.el));
+            Array.from(selector.children).forEach(child => {
+                if (!cachedEls.has(child)) child.remove(); // placeholders / stale text
+            });
+
+            const seen = new Set();
+            let anchor = null;
+
+            filteredDisks.forEach(disk => {
                 const rawVendor = disk.vendor ? disk.vendor.trim() + ' ' : '';
                 const rawModel = disk.model ? disk.model.trim() : 'Unknown';
                 const fullName = rawVendor + rawModel;
@@ -62,16 +84,20 @@ async function fetchDrives() {
                 }
                 let usedPct = Math.min((usedSize / totalDiskSize) * 100, 100);
 
-                card.innerHTML = `
-                    <input type="checkbox" class="drive-checkbox" data-drive="${disk.path}" onclick="event.stopPropagation()" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;">
-                    <img class="drive-card-img" src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                const busyBadge = disk.busy ? '<span class="badge" style="background: var(--accent-amber); color: white; margin-left: 10px;">BUSY</span>' : '';
+                const busyMsg = disk.busy ? '<div style="font-size:12px;color:var(--accent-amber);margin-top:4px;">Active in another operation.</div>' : '';
+
+                const cardHtml = `
+                    <input type="checkbox" class="drive-checkbox" data-drive="${disk.path}" ${disk.busy ? 'disabled' : ''} style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;">
+                    <img class="drive-card-img" src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                     <div class="drive-card-body">
-                        <div class="drive-card-title">${fullName || disk.name}</div>
+                        <div class="drive-card-title">${fullName || disk.name}${busyBadge}</div>
                         <div class="drive-card-meta">
                             <span><strong>Path:</strong>${disk.path}</span>
                             <span><strong>Size:</strong>${formatBytes(disk.size)}</span>
                             <span><strong>Table:</strong>${disk.pttype ? disk.pttype.toUpperCase() : 'Unknown'}</span>
                         </div>
+                        ${busyMsg}
                         <div class="drive-card-bar">
                             <div class="drive-card-bar-label">
                                 <span>Allocated</span>
@@ -83,10 +109,40 @@ async function fetchDrives() {
                         </div>
                     </div>
                 `;
-                card.onclick = () => selectDrive(disk.path, card);
-                selector.appendChild(card);
+                const cardKey = String(disk.path);
+                seen.add(cardKey);
+
+                let entry = cardCache.get(cardKey);
+                if (!entry) {
+                    const el = document.createElement('div');
+                    el.dataset.drive = disk.path;
+                    entry = { el: el, html: '' };
+                    cardCache.set(cardKey, entry);
+                }
+                const wantedClass = disk.busy ? 'drive-card busy-card' : 'drive-card';
+                if (entry.el.className !== wantedClass) entry.el.className = wantedClass;
+                const wantedCursor = disk.busy ? 'not-allowed' : '';
+                if (entry.el.style.cursor !== wantedCursor) entry.el.style.cursor = wantedCursor;
+                if (entry.html !== cardHtml) {
+                    entry.el.innerHTML = cardHtml;
+                    entry.html = cardHtml;
+                }
+
+                if (entry.el.parentNode !== selector) selector.appendChild(entry.el);
+                if (anchor && entry.el.previousElementSibling !== anchor) {
+                    selector.insertBefore(entry.el, anchor.nextElementSibling);
+                }
+                anchor = entry.el;
+            });
+
+            cardCache.forEach((entry, key) => {
+                if (!seen.has(key)) {
+                    entry.el.remove();
+                    cardCache.delete(key);
+                }
             });
         } else {
+            window.__partCardCache = new Map();
             selector.innerHTML = '<p class="empty-state">No drives found.</p>';
         }
         if (window.applyGlobalLayout) window.applyGlobalLayout();

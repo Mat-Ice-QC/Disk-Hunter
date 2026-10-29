@@ -47,11 +47,12 @@ function renderHistory(history) {
         const options = {
             title: 'S.M.A.R.T. Test Logs',
             details: details,
-            logUrl: entry.container_name ? () => `/api/smart/logs/${encodeURIComponent(entry.container_name)}` : null
+            logUrl: entry.container_name ? () => `/api/smart/logs/${encodeURIComponent(entry.container_name)}` : null,
+            extraHtml: entry.drive ? `<button class="btn-action btn-sm" style="margin-top:8px;" onclick="event.stopPropagation(); viewSelfTestLog('${entry.drive.replace('/dev/', '')}')">View Self-Test Log</button>` : ''
         };
 
         const tr = document.createElement('tr');
-        tr.innerHTML = HistoryCommon.renderLogHeader(entry, { details: details });
+        tr.innerHTML = HistoryCommon.renderLogHeader(entry, options);
         HistoryCommon.makeRowClickable(tr, entry, options);
 
         tbody.appendChild(tr);
@@ -75,13 +76,49 @@ function clearHistory() {
     });
 }
 
+async function viewSelfTestLog(diskName) {
+    try {
+        const res = await fetch(`/api/smart/selftest-log/${encodeURIComponent(diskName)}`);
+        const data = await res.json();
+        if (data.status !== 'success') {
+            customAlert('Could not load self-test log: ' + (data.message || 'Unknown error'));
+            return;
+        }
+        const entries = data.entries || [];
+        let html = '';
+        if (entries.length === 0) {
+            html = '<p>No self-test log entries found.</p>';
+        } else {
+            html = '<table class="selftest-log-table"><thead><tr><th>#</th><th>Description</th><th>Status</th><th>Remaining</th><th>Lifetime</th><th>LBA</th></tr></thead><tbody>';
+            entries.forEach(e => {
+                html += `<tr><td>${HistoryCommon.escapeHtml(e.num)}</td><td>${HistoryCommon.escapeHtml(e.description)}</td><td>${HistoryCommon.escapeHtml(e.status)}</td><td>${HistoryCommon.escapeHtml(e.remaining)}</td><td>${HistoryCommon.escapeHtml(e.lifetime)}</td><td>${HistoryCommon.escapeHtml(e.lba)}</td></tr>`;
+            });
+            html += '</tbody></table>';
+        }
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay active';
+        modal.id = 'selftest-log-modal';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width: 900px;">
+                <div class="modal-header">Self-Test Log: /dev/${HistoryCommon.escapeHtml(diskName)} <span class="close-btn" onclick="document.getElementById('selftest-log-modal').remove()">&times;</span></div>
+                <div class="modal-content">${html}</div>
+                <div class="modal-actions"><button class="btn-modal-cancel" onclick="document.getElementById('selftest-log-modal').remove()">Close</button></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    } catch (e) {
+        customAlert('Network error loading self-test log.');
+    }
+}
+window.viewSelfTestLog = viewSelfTestLog;
+
 function exportToCSV() {
     if (currentHistory.length === 0) {
         customAlert('No history data available to export.');
         return;
     }
 
-    let csvContent = "Date & Time,Event,User (IP),Serial Number,Status\n";
+    let csvContent = "Date & Time,Event,User (IP),Serial Number,Inventory ID,Status\n";
 
     currentHistory.forEach(entry => {
         const rowData = [
@@ -89,6 +126,7 @@ function exportToCSV() {
             entry.event || 'N/A',
             entry.username || 'N/A',
             entry.serial || 'N/A',
+            entry.inventory_id || 'N/A',
             entry.status || 'N/A'
         ].map(val => `"${String(val).replace(/"/g, '""')}"`);
         csvContent += rowData.join(",") + "\n";

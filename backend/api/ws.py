@@ -5,7 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List
 
 from api.system import system_info
-from api.disks import get_disks, smart_attributes_cache, CACHE_DURATION
+from api.disks import get_disks, smart_attributes_cache, CACHE_DURATION, get_busy_disks
 from api.shredding import wipe_status
 from api.speedtest import speedtest_status
 from api.smartctl import smart_status
@@ -79,6 +79,7 @@ async def broadcast_system_data():
                 wipe_data = wipe_status()
                 speed_data = speedtest_status()
                 smart_data = smart_status()
+                busy_disks_data = get_busy_disks()
 
                 payload = {
                     "system_info": sys_data,
@@ -88,7 +89,8 @@ async def broadcast_system_data():
                     "speedtest_status": speed_data,
                     "smart_status": smart_data,
                     "iso_download_status": download_tasks,
-                    "iso_write_status": write_tasks
+                    "iso_write_status": write_tasks,
+                    "busy_disks": busy_disks_data,
                 }
 
                 last_broadcast_payload = json.dumps(payload)

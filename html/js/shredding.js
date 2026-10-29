@@ -54,6 +54,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-view-detailed').addEventListener('click', () => switchModalView('detailed'));
     document.getElementById('btn-view-simple').addEventListener('click', () => switchModalView('simple'));
 
+    // --- Delegated drive-card events (one listener per container for the
+    // whole page lifetime instead of per-card listeners on every rebuild) ---
+    const shredList = document.getElementById('shred-list-container');
+    if (shredList) {
+        shredList.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return; // checkbox handles itself via change
+            const card = e.target.closest('.drive-card');
+            if (!card || !e.target.closest('.drive-header')) return;
+            const checkbox = card.querySelector('.drive-checkbox');
+            if (!checkbox || checkbox.disabled) return;
+            checkbox.checked = !checkbox.checked;
+            applyShredSelection(card, checkbox);
+        });
+        shredList.addEventListener('change', (e) => {
+            if (e.target.classList && e.target.classList.contains('drive-checkbox')) {
+                applyShredSelection(e.target.closest('.drive-card'), e.target);
+            }
+        });
+    }
+    const activeList = document.getElementById('active-list-container');
+    if (activeList) {
+        activeList.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action="stop-wipe"]');
+            if (btn) stopWipeJob(btn.dataset.container);
+        });
+    }
+
     // Tab switching event listeners
     const tabButtons = document.querySelectorAll('.shred-ui-tab');
     tabButtons.forEach(btn => {
@@ -163,6 +190,20 @@ function syncDriveCardSelections() {
         card.classList.toggle('selected', isSelected);
     });
     if (typeof updateSelectionCount === 'function') updateSelectionCount('shred-list-container');
+}
+
+// Shared selection state update used by both the delegated card click and
+// the checkbox change event.
+function applyShredSelection(card, checkbox) {
+    const path = checkbox.value;
+    if (checkbox.checked) {
+        if (!selectedDrives.includes(path)) selectedDrives.push(path);
+        card.classList.add('selected');
+    } else {
+        selectedDrives = selectedDrives.filter(p => p !== path);
+        card.classList.remove('selected');
+    }
+    updateShredConfigUI();
 }
 
 function showShredNotice(msg) {
@@ -286,7 +327,7 @@ function updateShreddingUI() {
 
     const currentStateHash = filteredDisks.map(d => {
         const isWiping = wipingJobs.some(job => job.drive === d.name);
-        return `${d.path}:${isWiping}`;
+        return `${d.path}:${d.busy ? 1 : 0}:${isWiping}`;
     }).join('|');
 
     if (currentStateHash !== previousDiskStateHash) {
@@ -312,11 +353,25 @@ function rebuildUI(disks, wipingJobs) {
     const activeContainer = document.getElementById('active-list-container');
     const activeSection = document.getElementById('active-wipes-section');
 
-    availContainer.innerHTML = ''; 
-    activeContainer.innerHTML = '';
+    // Keyed card cache: disk.path -> { el, html, parent }. A disk whose card
+    // HTML is unchanged keeps its existing element (and its <img>), so a
+    // single drive starting or stopping a wipe no longer rebuilds every card
+    // on the page. Cards move between the available and active containers as
+    // their state changes.
+    if (!window.__shredCardCache) window.__shredCardCache = new Map();
+    const cardCache = window.__shredCardCache;
+    const cachedEls = new Set();
+    cardCache.forEach(entry => cachedEls.add(entry.el));
+    [availContainer, activeContainer].forEach(c => {
+        Array.from(c.children).forEach(child => {
+            if (!cachedEls.has(child)) child.remove(); // placeholders / stale text
+        });
+    });
 
     let activeCount = 0;
     let availableCount = 0;
+    const anchors = { avail: null, active: null };
+    const seen = new Set();
 
     disks.forEach(disk => {
         const diskSize = parseInt(disk.size);
@@ -330,18 +385,22 @@ function rebuildUI(disks, wipingJobs) {
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
         
-        const card = document.createElement('div');
-        card.dataset.path = disk.path; 
-
         const activeJob = wipingJobs.find(job => job.drive === driveName);
+        const cardKey = String(disk.path);
+        seen.add(cardKey);
+
+        let kind;
+        let cardHtml;
+        let wantedClass;
 
         if (activeJob) {
-            card.className = 'drive-card wiping-card';
-            card.innerHTML = `
+            kind = 'active';
+            wantedClass = 'drive-card wiping-card';
+            cardHtml = `
                 <div class="drive-header" style="justify-content: space-between; width: 100%;">
                     <div style="display: flex; gap: 20px;">
                         <div class="drive-image" style="width: 100px;">
-                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                         </div>
                         <div class="drive-info">
                             <h3 style="font-size: 18px; color: var(--accent-red); margin-bottom: 5px;">${fullName} <span class="badge" style="background: var(--accent-red); color: white; margin-left: 10px;">${window.translate('wiping', 'Wiping').toUpperCase()}</span></h3>
@@ -352,24 +411,40 @@ function rebuildUI(disks, wipingJobs) {
                         </div>
                     </div>
                     <div style="padding-left: 15px;">
-                        <button onclick="stopWipeJob('${activeJob.container}')" style="background: transparent; color: var(--accent-red); border: 1px solid var(--accent-red); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">${window.translate('stop_wipe', 'Stop Wipe')}</button>
+                        <button data-action="stop-wipe" data-container="${activeJob.container}" style="background: transparent; color: var(--accent-red); border: 1px solid var(--accent-red); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">${window.translate('stop_wipe', 'Stop Wipe')}</button>
                     </div>
                 </div>
             `;
-            activeContainer.appendChild(card);
-            activeCount++;
+        } else if (disk.busy) {
+            kind = 'avail';
+            wantedClass = 'drive-card busy-card';
+            cardHtml = `
+                <div class="drive-header">
+                    <div class="drive-image" style="width: 100px;">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
+                    </div>
+                    <div class="drive-info">
+                        <h3 style="font-size: 18px;">${fullName} <span class="badge" style="background: var(--accent-amber); color: white; margin-left: 10px;">BUSY</span></h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">
+                            <strong>${window.translate('path', 'Path')}:</strong> <span style="color: var(--accent-red);">${disk.path}</span> | 
+                            <strong>${window.translate('size', 'Size')}:</strong> ${formatBytes(diskSize)} | 
+                            <strong>S/N:</strong> ${serial}
+                        </p>
+                        <p style="font-size: 12px; color: var(--accent-amber); margin-top: 4px;">Active in another operation.</p>
+                    </div>
+                </div>
+            `;
         } else {
-            card.className = 'drive-card';
+            kind = 'avail';
             const isChecked = selectedDrives.includes(disk.path) ? 'checked' : '';
-            if (isChecked) card.classList.add('selected');
-
-            card.innerHTML = `
+            wantedClass = 'drive-card' + (isChecked ? ' selected' : '');
+            cardHtml = `
                 <div class="drive-header" style="cursor: pointer;">
                     <div style="padding-right: 10px; display: flex; align-items: center;">
                         <input type="checkbox" class="drive-checkbox" value="${disk.path}" ${isChecked}>
                     </div>
                     <div class="drive-image" style="width: 100px;">
-                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                     </div>
                     <div class="drive-info">
                         <h3 style="font-size: 18px;">${fullName}</h3>
@@ -381,41 +456,48 @@ function rebuildUI(disks, wipingJobs) {
                     </div>
                 </div>
             `;
+        }
 
-            const headerArea = card.querySelector('.drive-header');
-            const checkbox = card.querySelector('.drive-checkbox');
-            
-            headerArea.addEventListener('click', (e) => {
-                if (e.target !== checkbox) checkbox.checked = !checkbox.checked;
+        let entry = cardCache.get(cardKey);
+        if (!entry) {
+            const el = document.createElement('div');
+            el.dataset.path = disk.path;
+            entry = { el: el, html: '', parent: null };
+            cardCache.set(cardKey, entry);
+        }
+        if (entry.el.className !== wantedClass) entry.el.className = wantedClass;
+        if (entry.html !== cardHtml) {
+            entry.el.innerHTML = cardHtml;
+            entry.html = cardHtml;
+        }
 
-                if (checkbox.checked) {
-                    if (!selectedDrives.includes(disk.path)) selectedDrives.push(disk.path);
-                    card.classList.add('selected');
-                } else {
-                    selectedDrives = selectedDrives.filter(p => p !== disk.path);
-                    card.classList.remove('selected');
-                }
-                updateShredConfigUI();
-            });
+        const targetParent = kind === 'active' ? activeContainer : availContainer;
+        if (entry.parent !== targetParent || entry.el.parentNode !== targetParent) {
+            targetParent.appendChild(entry.el);
+            entry.parent = targetParent;
+        }
+        const anchor = anchors[kind];
+        if (anchor && entry.el.previousElementSibling !== anchor) {
+            targetParent.insertBefore(entry.el, anchor.nextElementSibling);
+        }
+        anchors[kind] = entry.el;
 
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) {
-                    if (!selectedDrives.includes(disk.path)) selectedDrives.push(disk.path);
-                    card.classList.add('selected');
-                } else {
-                    selectedDrives = selectedDrives.filter(p => p !== disk.path);
-                    card.classList.remove('selected');
-                }
-                updateShredConfigUI();
-            });
+        if (kind === 'active') activeCount++;
+        else availableCount++;
+    });
 
-            availContainer.appendChild(card);
-            availableCount++;
+    // Remove cards for disks that no longer exist
+    cardCache.forEach((entry, key) => {
+        if (!seen.has(key)) {
+            entry.el.remove();
+            cardCache.delete(key);
         }
     });
 
     activeSection.style.display = activeCount > 0 ? 'block' : 'none';
-    if (availableCount === 0) availContainer.innerHTML = `<p style="color: var(--text-muted);">${window.translate('no_avail_drives', 'No available drives to wipe.')}</p>`;
+    if (availableCount === 0 && availContainer.children.length === 0) {
+        availContainer.innerHTML = `<p style="color: var(--text-muted);">${window.translate('no_avail_drives', 'No available drives to wipe.')}</p>`;
+    }
     window.applyLocalization();
     if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
@@ -761,6 +843,26 @@ function showConfirmationModal() {
     document.getElementById('btn-view-simple').classList.remove('active');
     switchModalView('detailed');
 
+    // Prefill Inventory IDs from saved S/N mappings (empty fields only), so
+    // a mapping saved by an earlier wipe is remembered on the next one.
+    selectedDrives.forEach(path => {
+        const disk = availableDisksData.find(d => d.path === path);
+        if (!disk || !disk.serial || disk.serial === 'N/A') return;
+        fetch('/api/inventory?serial=' + encodeURIComponent(disk.serial))
+            .then(res => res.json())
+            .then(data => {
+                if (!data || data.status !== 'success' || !data.inventory_id) return;
+                ['--d', '--s'].forEach(suffix => {
+                    const input = document.getElementById(`inv-${path}${suffix}`);
+                    if (input && !input.value.trim()) {
+                        input.value = data.inventory_id;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                });
+            })
+            .catch(() => {});
+    });
+
     document.getElementById('shred-modal').classList.add('active');
     window.applyLocalization();
 }
@@ -830,6 +932,17 @@ async function executeWipe() {
 
         if (result.status === 'success') {
             if (isDebug) debugOutput.innerHTML += `<span style="color: var(--accent-green);">[Success]</span> ${result.message}<br>`;
+            // Persist the S/N -> Inventory ID mappings entered for this wipe so
+            // the next wipe of the same drive remembers them (best effort; a
+            // failed mapping save never affects the running wipe).
+            driveObjects.forEach(obj => {
+                if (!obj.inventory_id || obj.inventory_id === 'N/A') return;
+                const disk = availableDisksData.find(d => d.path === obj.path);
+                const serial = disk && disk.serial;
+                if (serial && serial !== 'N/A' && window.saveInventoryMapping) {
+                    window.saveInventoryMapping(serial, obj.inventory_id);
+                }
+            });
             selectedDrives = [];
             selectedMethod = activeShredTab === 'nvme' ? 'nvme-user' : 'dodshort';
             const container = document.getElementById('wipe-method-list');

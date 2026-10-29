@@ -8,6 +8,7 @@
 
 .history-view .drive-path { font-weight: 600; }
 .history-view .drive-serial { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.history-view .drive-inventory { font-size: 11px; color: var(--primary); margin-top: 2px; }
 .history-view .log-secondary { margin-top: 4px; font-size: 12px; font-weight: normal; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
 
 .history-view tr.log-row { cursor: pointer; }
@@ -30,6 +31,14 @@
 .detail-label { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 .detail-value { color: var(--text-main); font-size: 14px; word-break: break-word; }
 .detail-serial { color: var(--text-muted); font-size: 12px; }
+.detail-inventory { color: var(--primary); font-size: 12px; }
+
+/* Self-test log modal table (smart_history.html does not load smartctl.css,
+   so the table style lives here with the other shared history styles) */
+.selftest-log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.selftest-log-table th, .selftest-log-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.selftest-log-table th { background: rgba(255, 255, 255, 0.05); font-weight: 600; color: var(--text-light); }
+.selftest-log-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
 
 .detail-section { margin-top: 14px; }
 .detail-section-label { color: var(--text-light); font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }

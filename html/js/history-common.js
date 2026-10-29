@@ -66,7 +66,8 @@ window.HistoryCommon = (function () {
         const extraHtml = options.extraHtml || '';
 
         const driveHtml = '<div class="drive-path">' + escapeHtml(getDrive(entry)) + '</div>' +
-            (entry.serial ? '<div class="drive-serial">S/N: ' + escapeHtml(entry.serial) + '</div>' : '');
+            (entry.serial ? '<div class="drive-serial">S/N: ' + escapeHtml(entry.serial) + '</div>' : '') +
+            (entry.inventory_id && entry.inventory_id !== 'N/A' ? '<div class="drive-inventory">Inv: ' + escapeHtml(entry.inventory_id) + '</div>' : '');
 
         const detailsHtml = details.length
             ? '<div class="log-secondary">' +
@@ -188,6 +189,7 @@ window.HistoryCommon = (function () {
             '<div class="detail-row"><span class="detail-label">User IP</span><span class="detail-value">' + escapeHtml(getUserIp(entry)) + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Drive / Target</span><span class="detail-value">' + escapeHtml(getDrive(entry)) +
                 (entry.serial ? ' <span class="detail-serial">S/N: ' + escapeHtml(entry.serial) + '</span>' : '') +
+                (entry.inventory_id && entry.inventory_id !== 'N/A' ? ' <span class="detail-inventory">Inv: ' + escapeHtml(entry.inventory_id) + '</span>' : '') +
             '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">' + statusBadge(entry.status) + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Event</span><span class="detail-value">' + escapeHtml(eventText) + '</span></div>' +
@@ -243,17 +245,41 @@ window.HistoryCommon = (function () {
         m.classList.add('active');
     }
 
+    // --- Clickable rows via event delegation ---
+    // One click + one keydown listener on the document for the whole page,
+    // regardless of row count, instead of two listeners on every row.
+    // Document-level (not tbody-level) so rows can be registered before
+    // they are appended to the table.
+    const rowRecords = new WeakMap(); // tr -> { entry, options }
+    let rowDelegationInstalled = false;
+
+    function installRowDelegation() {
+        if (rowDelegationInstalled) return;
+        rowDelegationInstalled = true;
+        document.addEventListener('click', (e) => {
+            const row = e.target && e.target.closest ? e.target.closest('tr.log-row') : null;
+            if (!row) return;
+            const record = rowRecords.get(row);
+            if (record) showLogDetail(record.entry, record.options);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            const row = e.target && e.target.closest ? e.target.closest('tr.log-row') : null;
+            if (!row || e.target !== row) return; // row itself must be focused (tabindex=0)
+            const record = rowRecords.get(row);
+            if (record) {
+                e.preventDefault();
+                showLogDetail(record.entry, record.options);
+            }
+        });
+    }
+
     function makeRowClickable(tr, entry, options) {
         tr.classList.add('log-row');
         tr.title = 'Click to view details';
         tr.setAttribute('tabindex', '0');
-        tr.addEventListener('click', () => showLogDetail(entry, options));
-        tr.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                showLogDetail(entry, options);
-            }
-        });
+        rowRecords.set(tr, { entry: entry, options: options });
+        installRowDelegation();
     }
 
     return {

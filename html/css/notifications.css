@@ -1,0 +1,68 @@
+.notifications-page { max-width: 900px; }
+.notifications-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.notifications-page-title { margin-bottom: 0; }
+.notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.notifications-empty {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 24px;
+    text-align: center;
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: 12px;
+}
+
+.notif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 4px solid rgba(255, 255, 255, 0.12);
+    animation: fadeIn 0.3s ease-in-out;
+}
+.notif-item.unread { border-color: rgba(255, 255, 255, 0.14); box-shadow: 0 0 12px rgba(59,130,246,0.08) inset; }
+.notif-item.severity-success { border-left-color: var(--accent-green, #10b981); }
+.notif-item.severity-warning { border-left-color: var(--accent-yellow, #f59e0b); }
+.notif-item.severity-error { border-left-color: var(--accent-red, #ef4444); }
+.notif-item.severity-info { border-left-color: var(--primary, #3b82f6); }
+
+.notif-severity-icon { font-size: 16px; line-height: 1.3; flex-shrink: 0; }
+.notif-body { flex: 1; min-width: 0; }
+.notif-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.notif-type {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: rgba(0,0,0,0.3);
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+.notif-time { font-size: 12px; color: var(--text-muted); }
+.notif-message { font-size: 14px; color: var(--text-main); font-weight: 600; line-height: 1.4; word-break: break-word; }
+.notif-item.consumed .notif-message { font-weight: 400; color: var(--text-muted); }
+
+/* The notifications page only loads style.css + this file, so carry the
+   small-button sizing locally (other pages get .btn-sm from their module
+   stylesheet). */
+.btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; }

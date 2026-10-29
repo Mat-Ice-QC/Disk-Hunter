@@ -62,7 +62,66 @@ body { background: linear-gradient(135deg, var(--bg-dark), #020617); color: var(
 .info-pill span { color: var(--text-main); font-weight: 600; }
 a.info-pill, .temp-pill-link { text-decoration: none; color: var(--text-muted); cursor: pointer; }
 a.info-pill:hover, .temp-pill-link:hover { border-color: var(--primary); }
-.extra-temp-pill { cursor: default; }
+.extra-temp-pill { cursor: default; color: var(--text-main); font-weight: 600; border-color: rgba(255,255,255,0.05); background: rgba(0,0,0,0.3); }
+.extra-temp-pill:hover { border-color: rgba(255,255,255,0.05); }
+.extra-temp-pill .temp-icon { color: var(--accent-red); }
+.extra-temp-pill .temp-text { color: var(--text-main); font-weight: 600; }
+
+/* --- Global Notification Banner (all pages) --- */
+.global-notification-banner {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -120%);
+    width: fit-content;
+    max-width: 720px;
+    z-index: 200;
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 22px;
+    border-radius: 0 0 12px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.97));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: none;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.global-notification-banner.visible { display: flex; transform: translate(-50%, 0); }
+.global-notification-banner.severity-success { border-color: rgba(16, 185, 129, 0.5); }
+.global-notification-banner.severity-warning { border-color: rgba(245, 158, 11, 0.55); }
+.global-notification-banner.severity-error { border-color: rgba(239, 68, 68, 0.6); }
+.global-notification-banner.severity-info { border-color: rgba(59, 130, 246, 0.5); }
+.global-notification-banner .banner-text { white-space: pre-wrap; word-break: break-word; }
+.global-notification-banner .banner-close {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.global-notification-banner .banner-close:hover { color: var(--text-main); }
+
+/* --- Header Notification Badge --- */
+.header-notif-btn { position: relative; }
+.notif-badge {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--accent-red, #ef4444);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
 .temp-icon { color: var(--accent-red); }
 .ip-icon { color: var(--accent-green); }
 .time-icon { color: var(--primary); }
@@ -158,6 +217,16 @@ p { color: var(--text-muted); line-height: 1.6; margin-bottom: 15px; }
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
     border-color: rgba(59, 130, 246, 0.3);
 }
+.drive-card.busy-card {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: linear-gradient(145deg, rgba(69, 47, 10, 0.7), rgba(15, 23, 42, 0.9));
+    opacity: 0.85;
+}
+.drive-card.busy-card:hover {
+    transform: none;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    border-color: rgba(245, 158, 11, 0.6);
+}
 .drive-header { display: flex; gap: 20px; align-items: center; }
 
 .drive-image {
@@ -211,7 +280,12 @@ p { color: var(--text-muted); line-height: 1.6; margin-bottom: 15px; }
 .menu-item.active.submenu-item { border-left: none !important; }
 
 /* --- Modal Styles --- */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+/* No backdrop-filter on the modal overlay: it spans the whole viewport, so
+   every keystroke/hover/scroll repaint inside an open modal (the shred
+   confirm modal has text inputs) recomputed a full-screen blur — heavy lag
+   on software-rendered clients (Firefox ESR kiosk). The dark scrim keeps
+   the dimmed-backdrop look; potato mode already shipped this no-blur look. */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
 .modal-overlay.active { opacity: 1; visibility: visible; }
 .modal-box { background: linear-gradient(145deg, var(--bg-panel), var(--bg-dark)); border-radius: var(--radius-card); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); width: 90%; max-width: 800px; display: flex; flex-direction: column; max-height: 80vh; transform: translateY(20px); transition: transform 0.3s ease;}
 .modal-overlay.active .modal-box { transform: translateY(0); }
@@ -361,8 +435,9 @@ select {
     right: 0;
     margin-top: 8px;
     background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    /* No backdrop-filter: this is a scroll container whose 95%-opaque
+       background makes the blur visually undetectable (measured pixel diff
+       ~0) while costing a re-blur on every scroll frame. */
     border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 8px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -458,7 +533,8 @@ body.potato-mode * {
     font-family: monospace; font-size: 12px;
     border: 1px solid rgba(255,255,255,0.08); border-radius: 8px 0 0 0;
     box-shadow: -4px -4px 20px rgba(0,0,0,0.6);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    /* No backdrop-filter: internal scroll container at 92% opacity where the
+       blur is visually undetectable but re-blurs on every scroll frame. */
 }
 #debug-console.debug-console-floating.minimized { height: 36px; overflow: hidden; }
 #debug-console.debug-console-floating.minimized .debug-console-body { display: none; }
@@ -621,3 +697,37 @@ table.history-table tbody tr:hover, table.data-table tbody tr:hover, table.file-
 .badge-danger { color: var(--accent-red); background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); }
 .badge-info { color: var(--primary); background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); }
 .badge-muted { color: var(--text-muted); background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.3); }
+
+/* --- Rendering performance --- */
+/* Long grids and tables skip rendering work for offscreen items where the
+   browser supports it (Chromium and Firefox 125+; Firefox ESR 115 ignores
+   this block gracefully via the @supports guard). 'auto' in
+   contain-intrinsic-size makes the browser remember each item's real size
+   once rendered so the scrollbar stays stable. Measured against the
+   previous stylesheet: identical layout, geometry and content; only
+   text-antialiasing edge pixels differ (subpixel AA inside isolated
+   subtrees), which is imperceptible at normal viewing. */
+@supports (content-visibility: auto) {
+    #disk-list-container .drive-card,
+    .drive-list-grid .drive-card {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 320px;
+    }
+    table.history-table tbody tr,
+    table.file-browser-table tbody tr,
+    table.data-table tbody tr {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 41px;
+    }
+}
+
+/* Respect the OS "reduce motion" accessibility setting: no decorative
+   animation or transition plays for users who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

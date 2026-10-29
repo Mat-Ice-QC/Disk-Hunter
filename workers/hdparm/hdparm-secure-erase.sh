@@ -32,22 +32,29 @@ echo ""
 echo "Querying ATA Security capabilities..."
 SEC_INFO=$(hdparm -I "$DEVICE" 2>/dev/null | grep -A30 -i "^[[:space:]]*Security:" || true)
 
-if ! echo "$SEC_INFO" | grep -qi "supported"; then
+# hdparm prints the security states with tab/space alignment, e.g.
+# "\tnot\tlocked" and "\tnot\tfrozen". Match line-anchored with a
+# [[:space:]]+ separator so both "not locked" and "not<TAB>locked" work;
+# a plain substring match would see "locked" inside "not locked" and
+# wrongly reject every healthy drive.
+if ! printf '%s\n' "$SEC_INFO" | grep -qiE '^[[:space:]]*supported'; then
     echo "ERROR: $DEVICE does not advertise ATA Security / Secure Erase support."
     echo "=== Erase Failed ==="
     exit 1
 fi
 
 # A locked drive cannot be erased without the existing security password.
-if echo "$SEC_INFO" | grep -qi "locked" && ! echo "$SEC_INFO" | grep -qi "not locked"; then
+if printf '%s\n' "$SEC_INFO" | grep -qiE '^[[:space:]]*locked'; then
     echo "ERROR: $DEVICE is security-locked. The existing ATA security password is required to proceed."
     echo "=== Erase Failed ==="
     exit 1
 fi
 
 # If enhanced erase was requested but the drive only supports standard, fall back.
+# Support line reads "supported: enhanced erase"; absence reads "not<TAB>enhanced erase".
 if [ "$METHOD" = "enhanced" ]; then
-    if ! echo "$SEC_INFO" | grep -qi "enhanced erase"; then
+    if printf '%s\n' "$SEC_INFO" | grep -qiE '^[[:space:]]*not[[:space:]]+enhanced erase' \
+       || ! printf '%s\n' "$SEC_INFO" | grep -qi 'enhanced erase'; then
         echo "WARNING: $DEVICE does not support Enhanced Secure Erase. Falling back to Standard Secure Erase..."
         METHOD="secure"
     fi
@@ -80,10 +87,12 @@ get_scsi_host() {
 }
 
 check_frozen() {
-    out=$(hdparm -I "$DEVICE" 2>/dev/null | grep -i "frozen" || true)
-    if echo "$out" | grep -qi "not frozen"; then
+    out=$(hdparm -I "$DEVICE" 2>/dev/null || true)
+    # Line-anchored, whitespace-tolerant: hdparm prints "not<TAB>frozen" for
+    # a healthy drive; a plain "frozen" substring match would misread it.
+    if printf '%s\n' "$out" | grep -qiE '^[[:space:]]*not[[:space:]]+frozen'; then
         echo "not_frozen"
-    elif echo "$out" | grep -qi "frozen"; then
+    elif printf '%s\n' "$out" | grep -qiE '^[[:space:]]*frozen'; then
         echo "frozen"
     else
         echo "unknown"

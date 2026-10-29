@@ -1,7 +1,7 @@
 /* ===== Settings Page — List Layout ===== */
 
 .settings-page {
-    max-width: 760px;
+    max-width: 1100px;
     margin: 0 auto;
     padding-bottom: 40px;
 }
@@ -308,7 +308,13 @@
 }
 
 /* ===== Drive Manager Modal (unchanged) ===== */
-.settings-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; animation: fadeIn 0.3s; }
+/* No backdrop-filter on the modal overlays: the overlay covers the whole
+   viewport, so a blur here recomputes on every keystroke/hover/scroll
+   repaint while a modal with inputs is open — on software-rendered clients
+   (Firefox ESR kiosk) that made typing in the modals lag heavily. The dark
+   scrim alone keeps the same dimmed-backdrop look (potato mode already
+   shipped this exact no-blur overlay). */
+.settings-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; justify-content: center; align-items: center; animation: fadeIn 0.3s; }
 .settings-modal-overlay.active { display: flex; }
 .settings-modal-content { background: linear-gradient(145deg, var(--bg-panel), var(--bg-dark)); padding: 25px; border-radius: var(--radius-card); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); transform: translateY(20px); animation: slideUp 0.3s forwards; }
 @keyframes slideUp { to { transform: translateY(0); } }
@@ -317,6 +323,19 @@
 .settings-modal-header h2 { margin: 0; color: var(--text-main); font-weight: 500; font-size: 24px; }
 .modal-close { background: rgba(255,255,255,0.05); border: none; color: var(--text-muted); width: 36px; height: 36px; border-radius: 50%; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .modal-close:hover { color: white; background: rgba(239, 68, 68, 0.8); }
+
+.inventory-manager-body { padding: 20px 25px; }
+.inv-manager-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; }
+.inventory-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.inv-empty { color: var(--text-muted); font-size: 13px; }
+.inv-row { display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 8px 10px; }
+.inv-row .inv-serial { flex: 1; min-width: 0; font-family: monospace; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-row .inv-id-input { flex: 1; min-width: 0; padding: 7px 10px; }
+.inv-row .btn-action { flex-shrink: 0; }
+.inv-add-row { display: flex; align-items: center; gap: 10px; }
+.inv-add-row .settings-input { flex: 1; min-width: 0; padding: 7px 10px; }
+.inv-add-row .btn-action { flex-shrink: 0; }
+#inventory-manager-modal .settings-modal-content { max-width: 640px; }
 
 .drive-manager-layout { display: flex; gap: 30px; flex-wrap: wrap; }
 .drive-list-pane { flex: 1; min-width: 300px; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 30px; }
@@ -327,14 +346,17 @@
 .drive-item-info { display: flex; align-items: center; gap: 15px; }
 .drive-item img { width: 44px; height: 44px; object-fit: contain; background: #000; border-radius: 6px; border: 1px solid #334155; }
 .drive-item-name { font-weight: 600; font-size: 14px; color: var(--text-light); }
+.drive-item-actions { display: flex; gap: 8px; }
 .btn-assign { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s; }
 .btn-assign:hover { background: var(--primary); color: white; }
+.btn-assign.btn-delete { background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.4); }
+.btn-assign.btn-delete:hover { background: var(--accent-red); color: white; }
 
 .dropzone { border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px 20px; text-align: center; color: var(--text-muted); margin-bottom: 20px; cursor: pointer; transition: all 0.3s; background: rgba(15, 23, 42, 0.3); font-weight: 500; }
 .dropzone:hover, .dropzone.dragover { border-color: var(--primary); background: rgba(59, 130, 246, 0.1); color: white; }
 .dropzone p { margin: 0; pointer-events: none; }
 
-.image-pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 5px; }
+.image-pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; max-height: 65vh; overflow-y: auto; padding-right: 5px; }
 .image-pool-grid::-webkit-scrollbar { width: 6px; }
 .image-pool-grid::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 10px; }
 .image-pool-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
@@ -344,3 +366,6 @@
 .pool-image { width: 100%; aspect-ratio: 1; object-fit: contain; background: rgba(0,0,0,0.4); border: 2px solid transparent; border-radius: 8px; padding: 8px; transition: all 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
 .pool-image-wrapper.selected .pool-image { border-color: var(--primary); background: rgba(59, 130, 246, 0.1); transform: scale(0.95); }
 .pool-image-wrapper:hover .pool-image { border-color: rgba(255,255,255,0.3); }
+.pool-image-delete { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(239, 68, 68, 0.9); color: white; font-size: 16px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; }
+.pool-image-wrapper:hover .pool-image-delete { opacity: 1; }
+.pool-image-delete:hover { background: rgba(220, 38, 38, 1); }

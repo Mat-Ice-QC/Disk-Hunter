@@ -5,14 +5,19 @@ from fastapi import APIRouter, Request
 from .models import PartitionActionRequest, BatchPartitionRequest, PreparePartitionsRequest
 from .history import append_partition_history
 from .system import get_local_time, get_client_ip
-from .disks import validate_drive_path
+from .disks import validate_drive_path, register_partition_op, unregister_partition_op
 from .drive_info import get_drive_serial as resolve_drive_serial
+from .inventory import get_inventory_id
 
 router = APIRouter()
 
 def get_drive_serial(drive: str) -> str:
     """Resolve the serial number of the physical disk backing a drive/partition path."""
     return resolve_drive_serial(drive, "N/A")
+
+def _partition_history_entry(base: dict, serial: str) -> dict:
+    base["inventory_id"] = get_inventory_id(serial) or "N/A"
+    return base
 
 def run_parted(drive: str, args: list[str], debug_list: list = None):
     cmd = ["parted", "-s", "-m", drive] + args
@@ -123,6 +128,9 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
     serial = get_drive_serial(req.drive)
     command_str = ""
 
+    # Mark the drive busy for the duration of the operation so other modules
+    # (shredding, SMART, speedtest) exclude it while parted/mkfs is running.
+    register_partition_op(req.drive)
     try:
         debug_logs.append(f"Received PartitionActionRequest: drive={req.drive}, action={req.action}, params={req.params}")
         ALLOWED_PARTED_ACTIONS = {"mklabel", "mkpart", "rm", "set", "unit", "print", "resizepart", "name", "toggle"}
@@ -161,7 +169,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     debug_logs.append(f"Command stderr: {res.stderr.strip()}")
                     
                 if res.returncode != 0:
-                    append_partition_history({
+                    append_partition_history(_partition_history_entry({
                         "timestamp": start_time,
                         "event": f"Format partition {part_path} as {fs_type} failed",
                         "drive": req.drive,
@@ -172,10 +180,10 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                         "username": ip,
                         "status": "error"
-                    })
+                    }, serial))
                     return {"status": "error", "message": res.stderr.strip() or res.stdout.strip(), "debug": debug_logs}
                 
-                append_partition_history({
+                append_partition_history(_partition_history_entry({
                     "timestamp": start_time,
                     "event": f"Formatted partition {part_path} as {fs_type}",
                     "drive": req.drive,
@@ -186,11 +194,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "output": (res.stdout + ("\n" + res.stderr if res.stderr else "")).strip(),
                     "username": ip,
                     "status": "success"
-                })
+                }, serial))
                 return {"status": "success", "message": f"Formatted {part_path} as {fs_type}", "debug": debug_logs}
             except subprocess.TimeoutExpired:
                 debug_logs.append("Command timed out after 120 seconds")
-                append_partition_history({
+                append_partition_history(_partition_history_entry({
                     "timestamp": start_time,
                     "event": f"Format partition {part_path} as {fs_type} timed out",
                     "drive": req.drive,
@@ -201,7 +209,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "output": "Command timed out after 120 seconds",
                     "username": ip,
                     "status": "error"
-                })
+                }, serial))
                 return {"status": "error", "message": "Formatting timed out", "debug": debug_logs}
             
         else:
@@ -221,7 +229,7 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                         command_str = aligned_cmd_str
                         res2 = run_parted(req.drive, ["mkpart"] + new_params, debug_list=debug_logs)
                         if res2.returncode == 0:
-                            append_partition_history({
+                            append_partition_history(_partition_history_entry({
                                 "timestamp": start_time,
                                 "event": f"Partition action {req.action} completed (aligned)",
                                 "drive": req.drive,
@@ -232,11 +240,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                                 "output": _parted_output_str(res2),
                                 "username": ip,
                                 "status": "success"
-                            })
+                            }, serial))
                             return {"status": "success", "message": "Action completed successfully (aligned to nearest valid boundary)", "debug": debug_logs}
                         err_msg = res2.stderr.strip() or res2.stdout.strip()
                 
-                append_partition_history({
+                append_partition_history(_partition_history_entry({
                     "timestamp": start_time,
                     "event": f"Partition action {req.action} failed",
                     "drive": req.drive,
@@ -247,10 +255,10 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                     "output": _parted_output_str(res),
                     "username": ip,
                     "status": "error"
-                })
+                }, serial))
                 return {"status": "error", "message": err_msg, "debug": debug_logs}
             
-            append_partition_history({
+            append_partition_history(_partition_history_entry({
                 "timestamp": start_time,
                 "event": f"Partition action {req.action} completed",
                 "drive": req.drive,
@@ -261,11 +269,11 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
                 "output": _parted_output_str(res),
                 "username": ip,
                 "status": "success"
-            })
+            }, serial))
             return {"status": "success", "message": "Action completed successfully", "debug": debug_logs}
     except Exception as e:
         debug_logs.append(f"Exception raised in partition_action endpoint: {str(e)}")
-        append_partition_history({
+        append_partition_history(_partition_history_entry({
             "timestamp": start_time,
             "event": f"Partition action {req.action} crashed",
             "drive": req.drive,
@@ -276,8 +284,10 @@ def partition_action(req: PartitionActionRequest, http_request: Request):
             "output": str(e),
             "username": ip,
             "status": "error"
-        })
+        }, serial))
         return {"status": "error", "message": str(e), "debug": debug_logs}
+    finally:
+        unregister_partition_op(req.drive)
 
 
 @router.post("/api/partitions/batch")
@@ -307,6 +317,7 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
         drive_start = get_local_time()
         drive_serial = get_drive_serial(drive)
         parted_cmd_str = " ".join(["parted", "-s", "-m", drive, req.action] + req.params)
+        register_partition_op(drive)
         try:
             res = run_parted(drive, [req.action] + req.params, debug_list=drive_debug)
             ok = res.returncode == 0
@@ -314,7 +325,7 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
             if not ok:
                 msg = msg or "Unknown error"
 
-            append_partition_history({
+            append_partition_history(_partition_history_entry({
                 "timestamp": drive_start,
                 "event": f"Batch {req.action} {'completed' if ok else 'failed'} on {drive}",
                 "drive": drive,
@@ -325,10 +336,10 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
                 "output": _parted_output_str(res),
                 "username": ip,
                 "status": "success" if ok else "error"
-            })
+            }, drive_serial))
             results.append({"drive": drive, "status": "success" if ok else "error", "message": msg, "debug": drive_debug})
         except Exception as e:
-            append_partition_history({
+            append_partition_history(_partition_history_entry({
                 "timestamp": drive_start,
                 "event": f"Batch {req.action} crashed on {drive}",
                 "drive": drive,
@@ -339,8 +350,10 @@ def partition_batch(req: BatchPartitionRequest, http_request: Request):
                 "output": str(e),
                 "username": ip,
                 "status": "error"
-            })
+            }, drive_serial))
             results.append({"drive": drive, "status": "error", "message": str(e), "debug": drive_debug})
+        finally:
+            unregister_partition_op(drive)
 
     succeeded = sum(1 for r in results if r["status"] == "success")
     failed = len(results) - succeeded
@@ -390,6 +403,7 @@ def partition_prepare(req: PreparePartitionsRequest, http_request: Request):
         outputs = []
         ok = True
         msg = "OK"
+        register_partition_op(drive)
         try:
             mklabel_cmd = ["parted", "-s", "-m", drive, "mklabel", label]
             commands.append(" ".join(mklabel_cmd))
@@ -410,8 +424,10 @@ def partition_prepare(req: PreparePartitionsRequest, http_request: Request):
             ok = False
             msg = str(e)
             outputs.append(str(e))
+        finally:
+            unregister_partition_op(drive)
 
-        append_partition_history({
+        append_partition_history(_partition_history_entry({
             "timestamp": start_time,
             "event": f"Prepare partitions {'completed' if ok else 'failed'} on {drive}",
             "drive": drive,
@@ -422,7 +438,7 @@ def partition_prepare(req: PreparePartitionsRequest, http_request: Request):
             "output": "\n".join(o for o in outputs if o),
             "username": ip,
             "status": "success" if ok else "error"
-        })
+        }, drive_serial))
         results.append({"drive": drive, "status": "success" if ok else "error", "message": msg, "debug": drive_debug})
 
     succeeded = sum(1 for r in results if r["status"] == "success")

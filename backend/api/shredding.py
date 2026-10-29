@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import validate_drive_path
 from .drive_info import get_drive_serial
+from .inventory import get_inventory_id
 
 from .models import ShredRequest, StopRequest
 from .history import append_history
@@ -99,6 +100,7 @@ def stop_shred(request: StopRequest, http_request: Request):
         name_parts = request.container_name.replace("disk_hunter_wipe_", "").split("--")
         drive = f"/dev/{name_parts[0]}" if name_parts[0] else "UNKNOWN"
         serial = name_parts[1] if len(name_parts) > 1 else "UNKNOWN"
+        inv_id = get_inventory_id(serial) or "N/A"
         # log audit history as "Stopped", and delete the container.
         stop_and_remove_container(request.container_name)
         append_history({
@@ -106,6 +108,7 @@ def stop_shred(request: StopRequest, http_request: Request):
             "event": f"USER stopped wipe of {drive}",
             "username": ip,
             "serial": serial,
+            "inventory_id": inv_id,
             "drive": drive,
             "status": "stopped",
             "command": f"docker stop {request.container_name}",
@@ -115,13 +118,67 @@ def stop_shred(request: StopRequest, http_request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Patterns that indicate a failing or unresponsive disk in worker output.
+# Screened line-by-line so benign summary lines such as "Completed without
+# error" or "Total errors: 0" do not flag a successful wipe as problematic.
+_PROBLEMATIC_LINE = re.compile(
+    r"(fatal|timed?\s?out|hung|i/o error|input/output error|device not ready|"
+    r"sense\s+(data|key|error)|medium error|hardware error|"
+    r"aborted by host|disk failure|blk_update_request|critical medium error)",
+    re.IGNORECASE,
+)
+_BENIGN_ERROR_LINE = re.compile(
+    r"(no|zero|without|0)[\s_:-]*(errors?|failed|failures)|errors?\s*[:=]\s*0\b",
+    re.IGNORECASE,
+)
+_BARE_ERROR_LINE = re.compile(r"\b(error|failed|failure)\b", re.IGNORECASE)
+
+
+def _detect_problematic(log_text: str) -> bool:
+    """Heuristic screen of worker output for a problematic disk.
+
+    Matches specific failure signatures on every line, plus a bare
+    error/failed mention that is not part of a benign count, so a healthy
+    nwipe summary ("0 errors") never triggers a false positive.
+    """
+    if not log_text:
+        return False
+    for line in log_text.splitlines():
+        low = line.lower()
+        if _BENIGN_ERROR_LINE.search(low):
+            continue
+        if _PROBLEMATIC_LINE.search(low):
+            return True
+        if _BARE_ERROR_LINE.search(low):
+            return True
+    return False
+
+
+def _tail_log_file(path: str, lines: int = 30) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            all_lines = f.read().splitlines()
+            return "\n".join(all_lines[-lines:])
+    except Exception:
+        return ""
+
+
 async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, serial: str, req: ShredRequest, start_time: str, server_name: str, inv_id: str, datacenter: str, ip: str, command: str):
     exit_code = await wait_for_container(container_name)
 
     end_time = get_local_time(req.timezone)
     report_filename = None
 
-    if exit_code == "0":
+    # Save container logs before analysing/deleting
+    log_dir = "/app/data/shredding/logs/container_logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file_path = os.path.join(log_dir, f"{container_name}.log")
+    save_container_logs(container_name, log_file_path)
+    log_tail = _tail_log_file(log_file_path, 30)
+
+    problematic = _detect_problematic(log_tail)
+
+    if exit_code == "0" and not problematic:
         status_text = "successfully completed"
         status = "completed"
         if req.generate_pdf:
@@ -135,25 +192,25 @@ async def monitor_wipe_job(container_name: str, drive: str, drive_name: str, ser
     else:
         status_text = f"failed (Exit Code: {exit_code})"
         status = "failed"
+        if problematic:
+            status_text = f"failed - PROBLEMATIC DISK DETECTED (Exit Code: {exit_code})"
 
-    append_history({
+    history_entry = {
         "timestamp": end_time,
         "event": f"USER {status_text} wipe of {drive}",
         "username": ip,
         "serial": serial,
+        "inventory_id": inv_id or "N/A",
         "drive": drive,
         "method": req.method,
         "command": command,
         "status": status,
         "report_file": report_filename,
-        "container_name": container_name
-    })
-
-    # Save container logs before deleting
-    log_dir = "/app/data/shredding/logs/container_logs"
-    os.makedirs(log_dir, exist_ok=True)
-    log_file_path = os.path.join(log_dir, f"{container_name}.log")
-    save_container_logs(container_name, log_file_path)
+        "container_name": container_name,
+    }
+    if status == "failed":
+        history_entry["output"] = log_tail
+    append_history(history_entry)
 
     stop_and_remove_container(container_name)
 
@@ -189,7 +246,12 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
             serial = get_drive_serial(drive)
             serial = re.sub(r'[^a-zA-Z0-9_.-]', '_', serial)
             debug_logs.append(f"Resolved serial for {drive}: {serial}")
-            
+
+            inv_id = drive_obj.inventory_id
+            if not inv_id or inv_id == "N/A":
+                inv_id = get_inventory_id(serial) or "N/A"
+            debug_logs.append(f"Resolved inventory ID for {drive}: {inv_id}")
+
             container_name = f"disk_hunter_wipe_{drive_name}--{serial}"
             
             devices = [f"{drive}:{drive}"]
@@ -241,6 +303,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
                 "event": f"USER started wipe of {drive}",
                 "username": ip,
                 "serial": serial,
+                "inventory_id": inv_id or "N/A",
                 "drive": drive,
                 "method": request.method,
                 "command": command,
@@ -253,7 +316,7 @@ def start_shred(request: ShredRequest, background_tasks: BackgroundTasks, http_r
             background_tasks.add_task(
                 monitor_wipe_job, 
                 container_name, drive, drive_name, serial, request, start_time, 
-                drive_obj.server_name, drive_obj.inventory_id, drive_obj.datacenter,
+                drive_obj.server_name, inv_id, drive_obj.datacenter,
                 ip, command
             )
             spawned_containers.append(container_name)

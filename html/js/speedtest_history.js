@@ -84,7 +84,7 @@ function exportToCSV() {
         return;
     }
 
-    let csvContent = "Date / Time,User (IP),Drive S/N,Base Type,Status,Read Speed 1G,Write Speed 1G,Read Speed 10G,Write Speed 10G,Read Speed 100G,Write Speed 100G\n";
+    let csvContent = "Date / Time,User (IP),Drive S/N,Inventory ID,Base Type,Status,Read Speed 1G,Write Speed 1G,Read Speed 10G,Write Speed 10G,Read Speed 100G,Write Speed 100G\n";
 
     const groups = [];
 
@@ -95,6 +95,7 @@ function exportToCSV() {
             const dateTime = HistoryCommon.formatTimestamp(entry.timestamp);
             const dateHour = dateTime.substring(0, 13);
             const driveSN = entry.serial || 'N/A';
+            const invId = entry.inventory_id || 'N/A';
             const typeStr = entry.test_type || 'N/A';
 
             let baseType = typeStr;
@@ -113,6 +114,7 @@ function exportToCSV() {
                     dateTime: dateTime,
                     userIp: entry.username || 'N/A',
                     driveSN: driveSN,
+                    inventoryId: invId,
                     baseType: baseType,
                     dateHour: dateHour,
                     status: 'Completed',
@@ -141,6 +143,7 @@ function exportToCSV() {
             g.dateTime,
             g.userIp,
             g.driveSN,
+            g.inventoryId,
             g.baseType,
             g.status,
             r1, w1, r10, w10, r100, w100

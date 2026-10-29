@@ -14,6 +14,7 @@ ISO_DIR = f"{DATA_DIR}/isos"
 BRANDING_FILE = f"{DATA_DIR}/branding.json"
 APP_SETTINGS_FILE = f"{DATA_DIR}/app_settings.json"
 ISO_HISTORY_FILE = f"{DATA_DIR}/iso_history.json"
+INVENTORY_IDS_FILE = f"{DATA_DIR}/inventory_ids.json"
 
 def _ensure_json_file(path):
     """Ensure a history file exists as a real file containing '[]'.
@@ -74,6 +75,7 @@ def setup_directories():
     _ensure_json_file(ISO_HISTORY_FILE)
     _ensure_json_object_file(BRANDING_FILE)
     _ensure_json_object_file(APP_SETTINGS_FILE)
+    _ensure_json_object_file(INVENTORY_IDS_FILE)
     _ensure_regular_file(LOGO_PATH)
     for _f in (
         HISTORY_FILE,

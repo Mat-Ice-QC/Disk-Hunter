@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Hunter | Notifications</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/notifications.css">
+</head>
+<body>
+    <div id="sidebar-container" class="sidebar"></div>
+
+    <div class="main-wrapper">
+        <div id="header-container" class="header"></div>
+
+        <div class="content">
+            <div class="notifications-page">
+                <div class="notifications-page-header">
+                    <h2 class="notifications-page-title">Notifications</h2>
+                    <button id="btn-notifications-mark-read" class="btn-action btn-sm">Mark All Read</button>
+                </div>
+
+                <div id="notifications-list" class="notifications-list">
+                    <div class="notifications-empty" id="notifications-empty">
+                        No notifications yet. Events such as wipe completions, SMART test
+                        finishes, speed tests, ISO operations and drive warnings will
+                        appear here.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="js/notifications.js"></script>
+</body>
+</html>

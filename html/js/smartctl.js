@@ -12,6 +12,43 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('smart-data-parsed-modal').classList.remove('active');
     });
 
+    // --- Delegated drive-card events (one listener per container for the
+    // whole page lifetime instead of per-card listeners on every rebuild) ---
+    const driveList = document.getElementById('drive-list-container');
+    if (driveList) {
+        driveList.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('[data-action]');
+            if (actionBtn) {
+                const action = actionBtn.dataset.action;
+                if (action === 'smart-raw') showRawSmartDataModal(actionBtn.dataset.drive);
+                else if (action === 'smart-parsed') showParsedSmartDataModal(actionBtn.dataset.drive);
+                else if (action === 'smart-stop') stopTest(actionBtn.dataset.container);
+                return;
+            }
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+            const card = e.target.closest('.drive-card');
+            if (!card) return;
+            const checkbox = card.querySelector('.drive-checkbox');
+            if (checkbox && !checkbox.disabled) {
+                checkbox.checked = !checkbox.checked;
+                applySmartSelection(card, checkbox);
+            }
+        });
+        driveList.addEventListener('change', (e) => {
+            if (e.target.classList && e.target.classList.contains('drive-checkbox')) {
+                applySmartSelection(e.target.closest('.drive-card'), e.target);
+            }
+        });
+    }
+    const activeList = document.getElementById('active-list-container');
+    if (activeList) {
+        activeList.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('[data-action]');
+            if (!actionBtn) return;
+            if (actionBtn.dataset.action === 'smart-stop') stopTest(actionBtn.dataset.container);
+        });
+    }
+
     // Show/hide API Debug Console based on settings
     const isDebug = localStorage.getItem('disk_hunter_debug') === 'true';
     const debugConsole = document.getElementById('debug-console');
@@ -71,7 +108,7 @@ function updateSmartUI() {
 
     const currentStateHash = filteredDisks.map(d => {
         const activeTest = runningTests.find(test => test.drive === d.name);
-        return `${d.path}:${activeTest ? 'active' : 'idle'}`;
+        return `${d.path}:${d.busy ? 1 : 0}:${activeTest ? 'active' : 'idle'}`;
     }).join('|');
 
     if (currentStateHash !== previousSmartStateHash) {
@@ -91,16 +128,40 @@ function updateLiveSmartLogs(runningTests) {
     });
 }
 
+// Shared selection state update used by both the delegated card click and
+// the checkbox change event.
+function applySmartSelection(card, checkbox) {
+    if (checkbox.checked) {
+        if (!selectedDrives.includes(checkbox.value)) selectedDrives.push(checkbox.value);
+        card.classList.add('selected');
+    } else {
+        selectedDrives = selectedDrives.filter(p => p !== checkbox.value);
+        card.classList.remove('selected');
+    }
+}
+
 function rebuildUI(disks, runningTests) {
     const availContainer = document.getElementById('drive-list-container');
     const activeContainer = document.getElementById('active-list-container');
     const activeSection = document.getElementById('active-tests-section');
 
-    availContainer.innerHTML = '';
-    activeContainer.innerHTML = '';
+    // Keyed card cache: disk.path -> { el, html, parent }. Unchanged cards
+    // keep their elements (and <img>), so one test starting or stopping does
+    // not rebuild every card on the page.
+    if (!window.__smartCardCache) window.__smartCardCache = new Map();
+    const cardCache = window.__smartCardCache;
+    const cachedEls = new Set();
+    cardCache.forEach(entry => cachedEls.add(entry.el));
+    [availContainer, activeContainer].forEach(c => {
+        Array.from(c.children).forEach(child => {
+            if (!cachedEls.has(child)) child.remove(); // placeholders / stale text
+        });
+    });
 
     let activeCount = 0;
     let availableCount = 0;
+    const anchors = { avail: null, active: null };
+    const seen = new Set();
 
     disks.forEach(disk => {
         const diskSize = parseInt(disk.size);
@@ -114,18 +175,22 @@ function rebuildUI(disks, runningTests) {
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const fallbackSVG = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" style="background:%231e293b; border-radius: 4px;"%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" font-family="sans-serif" font-weight="bold" font-size="30" text-anchor="middle" dominant-baseline="middle"%3EDRIVE%3C/text%3E%3C/svg%3E`;
 
-        const card = document.createElement('div');
-        card.dataset.path = disk.path;
-
         const activeTest = runningTests.find(test => test.drive === driveName);
+        const cardKey = String(disk.path);
+        seen.add(cardKey);
+
+        let kind;
+        let cardHtml;
+        let wantedClass;
 
         if (activeTest) {
-            card.className = 'drive-card wiping-card';
-            card.innerHTML = `
+            kind = 'active';
+            wantedClass = 'drive-card wiping-card';
+            cardHtml = `
                 <div class="drive-header" style="justify-content: space-between; width: 100%;">
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div class="drive-image" style="width: 100px;">
-                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                            <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                         </div>
                         <div class="drive-info">
                             <h3 style="font-size: 18px; color: var(--accent-blue); margin-bottom: 5px;">${fullName} <span class="badge" style="background: var(--accent-blue); color: white; margin-left: 10px;">${activeTest.test_type} Test in Progress</span></h3>
@@ -139,24 +204,40 @@ function rebuildUI(disks, runningTests) {
                         </div>
                     </div>
                     <div style="padding-left: 15px;">
-                        <button onclick="stopTest('${activeTest.container}')" class="btn-action red">Abort Test</button>
+                        <button data-action="smart-stop" data-container="${activeTest.container}" class="btn-action red">Abort Test</button>
                     </div>
                 </div>
             `;
-            activeContainer.appendChild(card);
-            activeCount++;
+        } else if (disk.busy) {
+            kind = 'avail';
+            wantedClass = 'drive-card busy-card';
+            cardHtml = `
+                <div class="drive-header">
+                    <div class="drive-image" style="width: 100px;">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
+                    </div>
+                    <div class="drive-info">
+                        <h3 style="font-size: 18px;">${fullName} <span class="badge" style="background: var(--accent-amber); color: white; margin-left: 10px;">BUSY</span></h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">
+                            <strong>Path:</strong> <span style="color: var(--accent-red);">${disk.path}</span> | 
+                            <strong>Size:</strong> ${formatBytes(diskSize)} | 
+                            <strong>S/N:</strong> ${serial}
+                        </p>
+                        <p style="font-size: 12px; color: var(--accent-amber); margin-top: 4px;">This drive is active in another operation.</p>
+                    </div>
+                </div>
+            `;
         } else {
-            card.className = 'drive-card';
+            kind = 'avail';
             const isChecked = selectedDrives.includes(disk.path) ? 'checked' : '';
-            if (isChecked) card.classList.add('selected');
-
-            card.innerHTML = `
+            wantedClass = 'drive-card' + (isChecked ? ' selected' : '');
+            cardHtml = `
                 <div class="drive-header">
                     <div style="padding-right: 10px; display: flex; align-items: center;">
                         <input type="checkbox" class="drive-checkbox" value="${disk.path}" ${isChecked}>
                     </div>
                     <div class="drive-image" style="width: 100px;">
-                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image">
+                        <img src="${imageUrl}" onerror="this.onerror=null; this.src='${fallbackSVG}';" alt="Drive Image" decoding="async">
                     </div>
                     <div class="drive-info">
                         <h3 style="font-size: 18px;">${fullName}</h3>
@@ -168,39 +249,50 @@ function rebuildUI(disks, runningTests) {
                     </div>
                 </div>
                 <div class="drive-actions">
-                    <button onclick="showRawSmartDataModal('${driveName}')" class="btn-action">View Raw</button>
-                    <button onclick="showParsedSmartDataModal('${driveName}')" class="btn-action btn-smart">View Parsed</button>
+                    <button data-action="smart-raw" data-drive="${driveName}" class="btn-action">View Raw</button>
+                    <button data-action="smart-parsed" data-drive="${driveName}" class="btn-action btn-smart">View Parsed</button>
                 </div>
             `;
+        }
 
-            const checkbox = card.querySelector('.drive-checkbox');
-            
-            const toggleSelection = () => {
-                if (checkbox.checked) {
-                    if (!selectedDrives.includes(disk.path)) selectedDrives.push(disk.path);
-                    card.classList.add('selected');
-                } else {
-                    selectedDrives = selectedDrives.filter(p => p !== disk.path);
-                    card.classList.remove('selected');
-                }
-            };
+        let entry = cardCache.get(cardKey);
+        if (!entry) {
+            const el = document.createElement('div');
+            el.dataset.path = disk.path;
+            entry = { el: el, html: '', parent: null };
+            cardCache.set(cardKey, entry);
+        }
+        if (entry.el.className !== wantedClass) entry.el.className = wantedClass;
+        if (entry.html !== cardHtml) {
+            entry.el.innerHTML = cardHtml;
+            entry.html = cardHtml;
+        }
 
-            card.addEventListener('click', (e) => {
-                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
-                    checkbox.checked = !checkbox.checked;
-                    toggleSelection();
-                }
-            });
+        const targetParent = kind === 'active' ? activeContainer : availContainer;
+        if (entry.parent !== targetParent || entry.el.parentNode !== targetParent) {
+            targetParent.appendChild(entry.el);
+            entry.parent = targetParent;
+        }
+        const anchor = anchors[kind];
+        if (anchor && entry.el.previousElementSibling !== anchor) {
+            targetParent.insertBefore(entry.el, anchor.nextElementSibling);
+        }
+        anchors[kind] = entry.el;
 
-            checkbox.addEventListener('change', toggleSelection);
-            
-            availContainer.appendChild(card);
-            availableCount++;
+        if (kind === 'active') activeCount++;
+        else availableCount++;
+    });
+
+    // Remove cards for disks that no longer exist
+    cardCache.forEach((entry, key) => {
+        if (!seen.has(key)) {
+            entry.el.remove();
+            cardCache.delete(key);
         }
     });
 
     activeSection.style.display = activeCount > 0 ? 'block' : 'none';
-    if (availableCount === 0 && activeCount === 0) {
+    if (availableCount === 0 && activeCount === 0 && availContainer.children.length === 0) {
         availContainer.innerHTML = '<p style="color: var(--text-muted);">No available drives.</p>';
     }
     if (window.applyGlobalLayout) window.applyGlobalLayout();

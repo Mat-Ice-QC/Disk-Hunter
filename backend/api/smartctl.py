@@ -3,6 +3,7 @@ import re
 import asyncio
 import logging
 import os
+import httpx
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Request
 from .models import SmartRequest, StopRequest
@@ -11,6 +12,7 @@ from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import validate_drive_path
 from .drive_info import get_drive_serial
+from .inventory import get_inventory_id
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/smartctl/logs/python"
@@ -123,11 +125,13 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
 
     logging.info(f"S.M.A.R.T. test {status_text} for {drive} (container: {container_name})")
 
+    inv_id = get_inventory_id(serial) or "N/A"
     append_smartctl_history({
         "timestamp": end_time,
         "event": f"SMART test ({test_type}) {status_text} on {drive}",
         "username": ip,
         "serial": serial,
+        "inventory_id": inv_id,
         "drive": drive,
         "test_type": test_type,
         "command": command,
@@ -136,6 +140,83 @@ async def monitor_smart_test(container_name: str, drive: str, serial: str, test_
     })
     stop_and_remove_container(container_name)
 
+
+
+def parse_selftest_log(output: str) -> list[dict]:
+    """Parse `smartctl -l selftest` output into structured entries.
+
+    Table rows look like:
+    # 1  Short offline       Completed without error       00%     12345   -
+    Columns are separated by runs of two or more whitespace characters, so
+    split on that instead of single spaces: descriptions ("Short offline")
+    and statuses ("Completed without error") contain single spaces.
+    """
+    entries = []
+    parsing = False
+    for line in output.splitlines():
+        if "Test_Description" in line and line.lstrip().startswith("Num"):
+            parsing = True
+            continue
+        if not parsing:
+            continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = re.split(r"\s{2,}", stripped)
+        if not parts or not parts[0].startswith("#"):
+            continue
+        if parts[0] == "#":
+            # '#' separated from the row number by wide whitespace
+            parts = parts[1:]
+            if not parts or not parts[0].isdigit():
+                continue
+        if len(parts) == 5:
+            # A long status can run into the remaining-% column with a single
+            # space ("Read failure is a failure of the t 10%"): split the
+            # trailing percentage back off.
+            m = re.search(r"^(.*\S)\s+(\d+%)\s*$", parts[2])
+            if m:
+                parts = [parts[0], parts[1], m.group(1), m.group(2), parts[3], parts[4]]
+        num = parts[0].lstrip("#").strip()
+        if len(parts) < 6 or not num:
+            continue
+        entries.append({
+            "num": num,
+            "description": parts[1].strip(),
+            "status": parts[2].strip(),
+            "remaining": parts[3].strip(),
+            "lifetime": parts[4].strip(),
+            "lba": parts[5].strip(),
+        })
+    return entries
+
+
+@router.get("/api/smart/selftest-log/{disk_name}")
+async def get_selftest_log(disk_name: str):
+    """Return the drive's S.M.A.R.T. self-test log. smartctl is not installed
+    in the API image, so the query is routed through the smart-provider
+    microservice (the same path the disk listing uses for smartctl -a)."""
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", disk_name):
+        return {"status": "error", "message": "Invalid disk name."}
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"http://localhost:8001/selftestlog/{disk_name}", timeout=30.0)
+        if res.status_code != 200:
+            detail = ""
+            try:
+                detail = res.json().get("detail", "")
+            except Exception:
+                pass
+            return {"status": "error", "message": detail or f"smart-provider returned HTTP {res.status_code}."}
+        raw = res.json().get("selftest_log", "")
+        entries = parse_selftest_log(raw)
+        return {"status": "success", "entries": entries, "raw": raw}
+    except httpx.RequestError as e:
+        logging.error(f"Could not connect to smart-provider for self-test log of {disk_name}: {e}")
+        return {"status": "error", "message": f"Could not connect to smart-provider service: {e}"}
+    except Exception as e:
+        logging.error(f"Error fetching self-test log for {disk_name}: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @router.get("/api/smart/logs/{container_name}")
@@ -229,11 +310,13 @@ def start_smart_test(request: SmartRequest, background_tasks: BackgroundTasks, h
                 logging.error(f"Docker Error starting S.M.A.R.T. test for {drive}")
                 return {"status": "error", "message": f"Docker Error starting container", "debug": debug_logs}
 
+            inv_id = get_inventory_id(serial) or "N/A"
             append_smartctl_history({
                 "timestamp": start_time,
                 "event": f"Started SMART test ({test_type}) on {drive}",
                 "username": ip,
                 "serial": serial,
+                "inventory_id": inv_id,
                 "drive": drive,
                 "test_type": test_type,
                 "command": command,

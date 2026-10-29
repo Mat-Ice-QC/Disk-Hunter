@@ -2,14 +2,77 @@ from fastapi import APIRouter
 import subprocess
 import json
 import re
+import threading
 import httpx
 import time
 from .drive_info import resolve_physical_disk, get_drive_info, get_form_factor
+from .inventory import get_inventory_id
 
 smart_attributes_cache = {}  # maps disk_name -> (timestamp, parsed_data)
 CACHE_DURATION = 30.0  # seconds
 
 router = APIRouter()
+
+# In-flight partition operations (parted runs in the API container itself, so
+# there is no worker container to detect). partition.py registers each drive
+# while a partition action is executing on it.
+_partition_ops_lock = threading.Lock()
+_partition_ops: set[str] = set()
+
+
+def register_partition_op(drive: str):
+    """Mark a drive as busy for the duration of an in-process partition job."""
+    name = drive.split("/")[-1]
+    if not name:
+        return
+    with _partition_ops_lock:
+        _partition_ops.add(name)
+
+
+def unregister_partition_op(drive: str):
+    name = drive.split("/")[-1]
+    with _partition_ops_lock:
+        _partition_ops.discard(name)
+
+
+def get_partition_busy_disks() -> list[str]:
+    with _partition_ops_lock:
+        return sorted(_partition_ops)
+
+
+def get_busy_disks() -> list[str]:
+    """Return disk names currently active in shredding, smartctl, speedtest,
+    or partition operations."""
+    busy = set()
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            for name in result.stdout.strip().splitlines():
+                if not name:
+                    continue
+                if name.startswith("disk_hunter_wipe_"):
+                    drive = name.replace("disk_hunter_wipe_", "").split("--")[0]
+                elif name.startswith("disk_hunter_smartctl_"):
+                    drive = name.replace("disk_hunter_smartctl_", "").split("--")[0]
+                elif name.startswith("disk_hunter_speedtest_"):
+                    drive = name.replace("disk_hunter_speedtest_", "").split("--")[0]
+                else:
+                    continue
+                if drive:
+                    busy.add(drive)
+    except Exception as e:
+        print(f"Error getting busy disks: {e}")
+    busy.update(get_partition_busy_disks())
+    return sorted(busy)
+
+
+@router.get("/api/disks/busy")
+def busy_disks():
+    return {"status": "success", "busy_disks": get_busy_disks()}
+
 
 def _smart_int(value: str) -> int | None:
     """Extracts the leading integer from a raw smart value like '0x00', '100%' or '1,234 [632 GB]'."""
@@ -253,6 +316,8 @@ async def get_disks(exclude_root: bool = False):
                 if pttype:
                     d['pttype'] = pttype
             d['form_factor'] = get_form_factor(d.get('model') or '', d.get('tran') or '')
+            d['inventory_id'] = get_inventory_id(d.get('serial')) or ''
+            d['busy'] = d.get('name') in get_busy_disks()
 
         if exclude_root:
             disks = [d for d in disks if not d.get('is_root', False)]

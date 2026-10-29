@@ -22,3 +22,10 @@ table.file-browser-table tbody tr:hover { background: rgba(255,255,255,0.03); }
 /* --- Actions --- */
 .actions-cell { display: flex; gap: 8px; }
 .btn-sm { padding: 6px 12px; font-size: 12px; font-weight: 600; }
+
+/* --- Root Disk Usage --- */
+.usage-progress { height: 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 999px; overflow: hidden; }
+.usage-progress-fill { height: 100%; width: 0%; background: var(--accent-green); border-radius: 999px; transition: width 0.5s ease, background 0.3s; }
+.usage-progress-fill.warn { background: var(--accent-yellow, #f0ad4e); }
+.usage-progress-fill.danger { background: var(--accent-red); }
+.usage-label { margin-top: 10px; color: var(--text-muted); font-size: 13px; }

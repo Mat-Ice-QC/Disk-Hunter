@@ -1,5 +1,6 @@
 import socket
 import os
+import shutil
 import json
 import glob
 import subprocess
@@ -7,6 +8,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Request
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -122,6 +124,91 @@ def thermal_zones():
     device picker."""
     return {"status": "success", "zones": get_thermal_zones()}
 
+class SystemTimeRequest(BaseModel):
+    datetime: str  # ISO-8601 like 2026-10-21T14:30:00
+
+
+def _query_ntp_status() -> str:
+    """Best-effort NTP status. The API container has no systemd, so
+    timedatectl usually fails and we report 'unknown' rather than guess."""
+    try:
+        res = subprocess.run(["timedatectl", "show", "--property=NTP", "--property=NTPSynchronized"],
+                             capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            out = res.stdout
+            if "NTP=yes" in out:
+                return "active (synchronized)" if "NTPSynchronized=yes" in out else "active (not yet synchronized)"
+            if "NTP=no" in out:
+                return "disabled"
+    except Exception:
+        pass
+    return "unknown"
+
+
+@router.get("/api/system/time")
+def get_system_time():
+    """Return the current system time in several formats and NTP status."""
+    now = datetime.now()
+    return {
+        "status": "success",
+        "iso": now.isoformat(),
+        "local": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "timezone": str(now.astimezone().tzinfo) if now.astimezone().tzinfo else "UTC",
+        "ntp_status": _query_ntp_status(),
+    }
+
+
+def _sync_hwclock() -> bool:
+    """Best-effort copy of the system clock to the hardware RTC. The API image
+    ships hwclock outside the service PATH (/usr/sbin), and a missing binary
+    must never fail an operation whose clock change already succeeded."""
+    for candidate in (shutil.which("hwclock"), "/sbin/hwclock", "/usr/sbin/hwclock"):
+        if candidate and os.path.exists(candidate):
+            try:
+                subprocess.run([candidate, "--systohc"], capture_output=True, text=True, timeout=10)
+                return True
+            except Exception:
+                return False
+    return False
+
+
+@router.post("/api/system/time")
+def set_system_time(req: SystemTimeRequest):
+    """Manually set the system clock and hardware clock. Requires privileged container."""
+    try:
+        target = req.datetime
+        # Accept ISO-8601 with T or space separator
+        target = target.replace("T", " ")
+        if len(target) > 19:
+            target = target[:19]
+        subprocess.run(["date", "-s", target], capture_output=True, text=True, check=True, timeout=10)
+        rtc = _sync_hwclock()
+        note = "" if rtc else " (RTC sync skipped: hwclock unavailable)"
+        return {"status": "success", "message": f"System time set to {target}{note}"}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "message": f"Failed to set time: {e.stderr or e.stdout or 'unknown error'}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/api/system/time/ntp-sync")
+def sync_ntp():
+    """Trigger an NTP sync using ntpdate. Requires privileged container."""
+    servers = ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]
+    last_error = ""
+    for server in servers:
+        try:
+            res = subprocess.run(["ntpdate", "-u", "-s", server], capture_output=True, text=True, timeout=30)
+            if res.returncode == 0:
+                rtc = _sync_hwclock()
+                note = "" if rtc else " (RTC sync skipped: hwclock unavailable)"
+                return {"status": "success", "message": f"NTP sync completed with {server}{note}"}
+            last_error = res.stderr.strip() or res.stdout.strip() or f"{server} returned {res.returncode}"
+        except Exception as e:
+            last_error = str(e)
+    return {"status": "error", "message": f"NTP sync failed: {last_error}"}
+
+
 @router.get("/api/system/features")
 def system_features():
     return {
@@ -199,3 +286,23 @@ def rescan_hardware():
 
     logging.info(f"Hardware rescan: {'; '.join(results)}")
     return {"status": "success", "results": results}
+
+@router.get("/api/system/root-usage")
+def root_usage():
+    """Return the storage usage of the root filesystem (/) so the UI can
+    show a used/total indicator for the root disk."""
+    try:
+        usage = shutil.disk_usage("/")
+        total = usage.total
+        free = usage.free
+        used = total - free
+        percent = round((used / total) * 100.0, 1) if total > 0 else 0.0
+        return {
+            "status": "success",
+            "used_bytes": used,
+            "total_bytes": total,
+            "free_bytes": free,
+            "percent_used": percent,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

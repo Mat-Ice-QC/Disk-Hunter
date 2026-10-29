@@ -102,6 +102,15 @@
                     <div class="settings-list">
                         <div class="setting-row">
                             <div class="setting-row-info">
+                                <div class="setting-row-title" data-i18n="nav_temperature">Temperature Sensors</div>
+                                <div class="setting-row-desc" data-i18n="settings_temp_sensors_desc">View live readings from every temperature sensor on the machine.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <a href="temperature.html" class="btn-action btn-sm" data-i18n="btn_open">Open</a>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-row-info">
                                 <div class="setting-row-title">Collect Temperature Data</div>
                                 <div class="setting-row-desc">Enables temperature readings in the header. Stored on the Disk Hunter machine.</div>
                             </div>
@@ -125,6 +134,22 @@
                                     <button id="btn-save-temperature" class="btn-action btn-sm">Save Temperature</button>
                                     <span id="temperature-status" class="setting-status"></span>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Management -->
+                <div class="settings-group">
+                    <div class="settings-group-label" data-i18n="nav_data_management">Data Management</div>
+                    <div class="settings-list">
+                        <div class="setting-row" id="settings-row-data-management">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title" data-i18n="settings_data_mgmt_row">File Browser & Audit Logs</div>
+                                <div class="setting-row-desc" data-i18n="settings_data_mgmt_desc">Browse, download or delete stored files, clear audit logs, and check root disk usage.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <a href="data-management.html" class="btn-action btn-sm" data-i18n="btn_open">Open</a>
                             </div>
                         </div>
                     </div>
@@ -212,6 +237,50 @@
                     </div>
                 </div>
 
+                <!-- Inventory IDs -->
+                <div class="settings-group">
+                    <div class="settings-group-label">Inventory IDs</div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title" data-i18n="inv_manager_title">Inventory ID Manager</div>
+                                <div class="setting-row-desc" data-i18n="inv_manager_desc">Map disk serial numbers to custom Inventory IDs. IDs are included in audit logs and PDF certificates, and a wipe started with an Inventory ID saves the mapping automatically.</div>
+                            </div>
+                            <div class="setting-row-control">
+                                <button id="btn-open-inventory-manager" class="btn-action btn-sm" data-i18n="inv_open_manager">Open Manager</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Time -->
+                <div class="settings-group">
+                    <div class="settings-group-label">System Time</div>
+                    <div class="settings-list">
+                        <div class="setting-row setting-row-column">
+                            <div class="setting-row-info">
+                                <div class="setting-row-title">Current System Time</div>
+                                <div class="setting-row-desc">DHCP leases, TLS, and network operations need an accurate clock. The container must run privileged to change the host clock.</div>
+                            </div>
+                            <div class="setting-row-control setting-row-control-full">
+                                <div id="system-time-display" class="system-time-display" style="font-size: 20px; font-weight: 600; color: var(--text-light); margin-bottom: 10px;">Loading...</div>
+                                <div id="system-time-ntp" class="system-time-ntp" style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;"></div>
+                                <div class="settings-form-grid">
+                                    <label class="settings-field">
+                                        <span class="settings-field-label">Set Date/Time</span>
+                                        <input type="datetime-local" id="system-time-input" class="settings-input">
+                                    </label>
+                                </div>
+                                <div class="setting-row-actions">
+                                    <button id="btn-set-system-time" class="btn-action btn-sm">Set Time</button>
+                                    <button id="btn-sync-ntp" class="btn-action btn-sm">Sync NTP</button>
+                                    <span id="system-time-status" class="setting-status"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Developer -->
                 <div class="settings-group">
                     <div class="settings-group-label">Developer Tools</div>
@@ -268,6 +337,26 @@
                     <div id="mass-upload-status" style="font-size: 13px; margin-bottom: 10px; text-align: center;"></div>
                     <div id="image-pool-grid" class="image-pool-grid"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Manager Modal -->
+    <div id="inventory-manager-modal" class="settings-modal-overlay">
+        <div class="settings-modal-content">
+            <div class="settings-modal-header">
+                <h2 data-i18n="inv_manager_title">Inventory ID Manager</h2>
+                <button class="modal-close" onclick="closeInventoryManager()">×</button>
+            </div>
+            <div class="inventory-manager-body">
+                <p class="inv-manager-hint" data-i18n="inv_manager_hint">Edit a serial's Inventory ID inline, add a new mapping, or remove one. Wipes started with an Inventory ID save the mapping automatically.</p>
+                <div id="inventory-rows" class="inventory-rows"></div>
+                <div class="inv-add-row">
+                    <input type="text" id="inv-add-serial" class="settings-input" data-i18n="inv_serial_ph" placeholder="Serial number (e.g. S123456789)">
+                    <input type="text" id="inv-add-id" class="settings-input" data-i18n="inv_id_ph" placeholder="Inventory ID (e.g. INV-12345)">
+                    <button id="btn-inv-add" class="btn-action btn-sm" data-i18n="inv_add">Add</button>
+                </div>
+                <div id="inventory-manager-status" class="setting-status"></div>
             </div>
         </div>
     </div>

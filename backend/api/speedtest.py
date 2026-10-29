@@ -12,6 +12,7 @@ from .system import get_local_time, get_client_ip
 from .docker_manager import get_running_containers, get_container_logs, stop_and_remove_container, wait_for_container, save_container_logs, run_container
 from .disks import get_root_disk, resolve_physical_disk
 from .drive_info import get_drive_serial
+from .inventory import get_inventory_id
 
 # Create logs directory if it doesn't exist
 log_dir = "/app/data/speedtest/logs/python"
@@ -81,7 +82,8 @@ def stop_speedtest(request: StopRequest):
 
 async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes: list[str], timezone: str, start_time: str, ip: str):
     drive_name = drive.split('/')[-1]
-    
+    inv_id = get_inventory_id(serial) or "N/A"
+
     for size in sizes:
         container_name = f"disk_hunter_speedtest_{drive_name}--{test_type}--{size}--{serial}"
         
@@ -107,6 +109,7 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
             "event": f"Started Speed test ({test_type} {size}) on {drive}",
             "username": ip,
             "serial": serial,
+            "inventory_id": inv_id,
             "drive": drive,
             "test_type": f"{test_type} ({size})",
             "command": command,
@@ -147,6 +150,7 @@ async def run_speedtest_sequence(drive: str, serial: str, test_type: str, sizes:
             "event": f"Speed test ({test_type} ({size})) {status_text} on {drive}",
             "username": ip,
             "serial": serial,
+            "inventory_id": inv_id,
             "drive": drive,
             "test_type": f"{test_type} ({size})",
             "command": command,

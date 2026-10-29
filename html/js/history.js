@@ -95,7 +95,7 @@ function exportToCSV() {
         return;
     }
 
-    let csvContent = "Date & Time,Event,User (IP),Serial Number,Algorithm,Report File\n";
+    let csvContent = "Date & Time,Event,User (IP),Serial Number,Inventory ID,Algorithm,Report File\n";
 
     currentHistory.forEach(log => {
         const rowData = [
@@ -103,6 +103,7 @@ function exportToCSV() {
             log.event || `USER started wipe of ${log.drive || 'Unknown'}`,
             log.user_ip || log.username || 'N/A',
             log.serial || 'N/A',
+            log.inventory_id || 'N/A',
             log.method ? log.method.toUpperCase() : 'UNKNOWN',
             log.report_file || 'N/A'
         ].map(val => `"${String(val).replace(/"/g, '""')}"`);

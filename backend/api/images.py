@@ -2,10 +2,24 @@ import os
 import shutil
 import re
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from .config import DRIVES_DIR, LOGO_PATH
 
 router = APIRouter()
+
+# Cache policies:
+# - Default SVGs are code-defined constants that only change with a new API
+#   image: they are served immutably so browsers and the kiosk never
+#   re-request them.
+# - Custom uploaded images can be replaced at any time: they stay
+#   revalidatable (no-cache + ETag) so a changed file is always picked up
+#   while unchanged files cost only a 304.
+IMMUTABLE_CACHE_HEADERS = {
+    "Cache-Control": "public, max-age=31536000, immutable",
+}
+REVALIDATE_CACHE_HEADERS = {
+    "Cache-Control": "no-cache",
+}
 
 SVG_NVME = """<svg width="120" height="90" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -97,22 +111,31 @@ SVG_HDD = """<svg width="120" height="90" viewBox="0 0 120 90" xmlns="http://www
     <text x="60" y="84" fill="#94a3b8" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Mechanical HDD</text>
 </svg>"""
 
-@router.get("/api/images/drives/{filename}")
-def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "", model: str = "", custom_only: str = ""):
-    safe_filename = os.path.basename(filename)
-    # Remove .jpg extension for processing
-    requested_base = safe_filename.rsplit('.', 1)[0]
-    
-    # 1. Try for an exact match first
-    exact_file_path = os.path.join(DRIVES_DIR, f"{requested_base}.jpg")
-    if os.path.exists(exact_file_path):
-        return FileResponse(exact_file_path)
+SVG_KIND_MAP = {
+    "nvme": SVG_NVME,
+    "usb": SVG_USB,
+    "sd": SVG_SD,
+    "ssd": SVG_SSD,
+    "hdd": SVG_HDD,
+}
 
-    # custom_only lets a caller that draws its own default graphic detect a missing custom image
-    if custom_only:
-        raise HTTPException(status_code=404, detail="No custom image")
 
-    # 2. Serving the default SVG matching the drive type
+@router.get("/api/images/defaults/{kind}.svg")
+def get_default_drive_svg(kind: str):
+    """Immutable default drive illustration (code-defined constant)."""
+    svg = SVG_KIND_MAP.get(kind)
+    if svg is None:
+        raise HTTPException(status_code=404, detail="Unknown illustration kind")
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers=IMMUTABLE_CACHE_HEADERS,
+    )
+
+
+def classify_default_svg(requested_base: str, name: str, tran: str, rota: str, model: str) -> str:
+    """Return the default illustration kind for a drive, matching the
+    heuristics the /api/images/drives route has always used."""
     name_lower = name.lower()
     tran_lower = tran.lower()
     model_lower = model.lower()
@@ -123,24 +146,54 @@ def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "
     is_sd = "sd" in model_lower or "sd" in base_lower or "mmc" in model_lower or "mmc" in base_lower or "card" in model_lower or "card" in base_lower or "mmcblk" in name_lower
 
     if is_nvme:
-        return Response(content=SVG_NVME, media_type="image/svg+xml")
-    elif is_usb:
+        return "nvme"
+    if is_usb:
         if "sd" in model_lower or "sd" in base_lower or "mmc" in model_lower or "mmc" in base_lower or "card" in model_lower or "card" in base_lower:
-            return Response(content=SVG_SD, media_type="image/svg+xml")
-        return Response(content=SVG_USB, media_type="image/svg+xml")
-    elif is_sd:
-        return Response(content=SVG_SD, media_type="image/svg+xml")
-    elif "ssd" in model_lower or "ssd" in base_lower or rota.lower() == "false" or rota is False:
-        return Response(content=SVG_SSD, media_type="image/svg+xml")
-    else:
-        # Default fallback to HDD
-        return Response(content=SVG_HDD, media_type="image/svg+xml")
+            return "sd"
+        return "usb"
+    if is_sd:
+        return "sd"
+    if "ssd" in model_lower or "ssd" in base_lower or rota.lower() == "false" or rota is False:
+        return "ssd"
+    return "hdd"
+
+
+@router.get("/api/images/drives/{filename}")
+def get_drive_image(filename: str, name: str = "", tran: str = "", rota: str = "", model: str = "", custom_only: str = ""):
+    safe_filename = os.path.basename(filename)
+    # Remove .jpg extension for processing
+    requested_base = safe_filename.rsplit('.', 1)[0]
+    
+    # 1. Try for an exact match first
+    exact_file_path = os.path.join(DRIVES_DIR, f"{requested_base}.jpg")
+    if os.path.exists(exact_file_path):
+        return FileResponse(
+            exact_file_path,
+            headers=REVALIDATE_CACHE_HEADERS,
+        )
+
+    # custom_only lets a caller that draws its own default graphic detect a missing custom image
+    if custom_only:
+        raise HTTPException(status_code=404, detail="No custom image")
+
+    # 2. No custom image: redirect to the immutable default illustration.
+    #    The redirect itself revalidates, so an uploaded custom image is
+    #    served immediately from this same URL, while the constant SVG it
+    #    pointed to before is cached forever by the browser.
+    kind = classify_default_svg(requested_base, name, tran, rota, model)
+    return RedirectResponse(
+        f"/api/images/defaults/{kind}.svg",
+        headers=REVALIDATE_CACHE_HEADERS,
+    )
 
 
 @router.get("/api/images/logo.png")
 def get_logo_image():
     if os.path.exists(LOGO_PATH):
-        return FileResponse(LOGO_PATH)
+        return FileResponse(
+            LOGO_PATH,
+            headers=REVALIDATE_CACHE_HEADERS,
+        )
     raise HTTPException(status_code=404, detail="Logo not found")
 
 @router.post("/api/upload-image")
@@ -194,6 +247,36 @@ def list_pool_images():
         images.update([f for f in os.listdir(POOL_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))])
     return {"images": sorted(images)}
 
+
+@router.delete("/api/images/pool/{filename}")
+def delete_pool_image(filename: str):
+    safe_filename = os.path.basename(filename)
+    if safe_filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    pool_path = os.path.join(POOL_DIR, safe_filename)
+    if not os.path.exists(pool_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        os.remove(pool_path)
+        return {"status": "success", "message": f"Deleted {safe_filename}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.delete("/api/images/drives/{drive_id}")
+def delete_drive_image(drive_id: str):
+    safe_drive_id = os.path.basename(drive_id)
+    if safe_drive_id in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid drive id")
+    file_path = os.path.join(DRIVES_DIR, f"{safe_drive_id}.jpg")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Drive image not found")
+    try:
+        os.remove(file_path)
+        return {"status": "success", "message": f"Deleted image for {safe_drive_id}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @router.get("/api/images/pool/{filename}")
 def get_pool_image(filename: str):
     safe_filename = os.path.basename(filename)
@@ -201,10 +284,11 @@ def get_pool_image(filename: str):
         raise HTTPException(status_code=400, detail="Invalid filename")
     pool_path = os.path.join(POOL_DIR, safe_filename)
     drives_path = os.path.join(DRIVES_DIR, safe_filename)
+    headers = REVALIDATE_CACHE_HEADERS
     if os.path.exists(pool_path):
-        return FileResponse(pool_path)
+        return FileResponse(pool_path, headers=headers)
     if os.path.exists(drives_path):
-        return FileResponse(drives_path)
+        return FileResponse(drives_path, headers=headers)
     raise HTTPException(status_code=404, detail="Image not found")
     
 @router.post("/api/images/assign")

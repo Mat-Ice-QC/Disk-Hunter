@@ -54,6 +54,18 @@ document.addEventListener('DOMContentLoaded', () => {
         renderDisks(e.detail);
     });
 
+    // Drive illustration lightbox via event delegation (one listener for the
+    // whole grid instead of one inline handler per card per render)
+    const listContainer = document.getElementById('disk-list-container');
+    if (listContainer) {
+        listContainer.addEventListener('click', (e) => {
+            const ill = e.target.closest('.drive-illustration');
+            if (ill && ill.dataset.lightboxUrl) {
+                window.openImageLightbox(ill.dataset.lightboxUrl, ill.dataset.lightboxTitle || '');
+            }
+        });
+    }
+
     // Apply SMART health from WS broadcast (avoids 21 per-disk HTTP calls)
     document.addEventListener('ws-smart_health', (e) => {
         const healthMap = e.detail;
@@ -239,6 +251,20 @@ async function fetchDisks() {
     }
 }
 
+function escapeHtmlAttr(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// Keyed card cache: disk.name -> { el, html }. A disk whose card HTML is
+// unchanged is left completely untouched, so its <img>/SVG illustration,
+// SMART badge and status banner survive WS-driven re-renders without
+// flicker, image re-requests or lost layout.
+const diskCardCache = new Map();
+
 function renderDisks(disksInput) {
     const container = document.getElementById('disk-list-container');
     if (!container) return;
@@ -264,7 +290,16 @@ function renderDisks(disksInput) {
 
     // Track active disk data in window for dynamic WS updates
     window.renderedDisksList = disks;
-    container.innerHTML = '';
+
+    // Drop placeholder/error nodes that are not cached drive cards
+    const cachedEls = new Set();
+    diskCardCache.forEach(entry => cachedEls.add(entry.el));
+    Array.from(container.children).forEach(child => {
+        if (!cachedEls.has(child)) child.remove();
+    });
+
+    const seen = new Set();
+    let anchor = null;
 
     disks.forEach(disk => {
         const diskSize = parseInt(disk.size);
@@ -321,9 +356,9 @@ function renderDisks(disksInput) {
         const imageUrl = `/api/images/drives/${normalizedId}.jpg?name=${disk.name}&tran=${disk.tran || ''}&rota=${disk.rota !== undefined ? disk.rota : ''}&model=${disk.model || ''}`;
         const hasCustomImage = loadedDriveImages.has(normalizedId);
         const noCustomImage = failedDriveImages.has(normalizedId);
-        const coverImgHtml = noCustomImage ? '' : `<img class="drive-cover-img${hasCustomImage ? '' : ' drive-cover-pending'}" src="${imageUrl}&custom_only=1" alt="Drive Cover Image">`;
+        const coverImgHtml = noCustomImage ? '' : `<img class="drive-cover-img${hasCustomImage ? '' : ' drive-cover-pending'}" src="${imageUrl}&custom_only=1" alt="Drive Cover Image" decoding="async">`;
         const imgElement = `
-            <div class="drive-illustration" onclick="openImageLightbox('${imageUrl}', '${fullName.replace(/'/g, "\\'")}')" style="cursor: pointer;" title="Click to enlarge">
+            <div class="drive-illustration" data-lightbox-url="${escapeHtmlAttr(imageUrl)}" data-lightbox-title="${escapeHtmlAttr(fullName)}" style="cursor: pointer;" title="Click to enlarge">
                 ${hasCustomImage ? coverImgHtml : driveSVG + coverImgHtml}
             </div>
         `;
@@ -399,10 +434,6 @@ function renderDisks(disksInput) {
             `S/N: ${serial}<br>` +
             `Size: ${formatBytes(diskSize)}`;
 
-        const card = document.createElement('div');
-        card.className = `drive-card ${glowClass}`;
-        card.id = `drive-card-${disk.name}`;
-        card.dataset.activeOp = 'false';
         let smartBadgeHtml = '';
         if (cachedData) {
             const health = cachedData.health || 'Unknown';
@@ -420,7 +451,7 @@ function renderDisks(disksInput) {
             smartBadgeHtml = `<span class="badge-smart checking" id="smart-badge-${disk.name}"><span class="spinner-mini"></span> ${window.translate('checking_smart', 'Checking SMART')}</span>`;
         }
 
-        card.innerHTML = `
+        const cardHtml = `
             <div class="drive-header" data-tooltip="${diskTooltip.replace(/"/g, '&quot;')}">
                 ${imgElement}
                 <div class="drive-info">
@@ -455,37 +486,75 @@ function renderDisks(disksInput) {
             </div>
         `;
 
-        // Swap the default SVG illustration for a successfully loaded custom cover image
-        if (!hasCustomImage) {
-            const coverImg = card.querySelector('.drive-illustration img.drive-cover-img');
-            if (coverImg) {
-                const onCoverLoaded = () => {
-                    loadedDriveImages.add(normalizedId);
-                    const driveSvgEl = card.querySelector('.drive-svg');
-                    if (driveSvgEl) driveSvgEl.style.display = 'none';
-                    coverImg.classList.remove('drive-cover-pending');
-                };
-                const onCoverError = () => {
-                    failedDriveImages.add(normalizedId);
-                    coverImg.remove();
-                };
-                coverImg.addEventListener('load', onCoverLoaded);
-                coverImg.addEventListener('error', onCoverError);
-                if (coverImg.complete) {
-                    if (coverImg.naturalWidth > 0) onCoverLoaded();
-                    else onCoverError();
+        const cardKey = String(disk.name);
+        seen.add(cardKey);
+
+        let entry = diskCardCache.get(cardKey);
+        const wantedClass = `drive-card ${glowClass}`;
+        if (!entry) {
+            const el = document.createElement('div');
+            el.id = `drive-card-${disk.name}`;
+            el.dataset.activeOp = 'false';
+            entry = { el: el, html: '' };
+            diskCardCache.set(cardKey, entry);
+        }
+        if (entry.el.className !== wantedClass) entry.el.className = wantedClass;
+
+        // Attach and order the card first: the wiring below resolves elements
+        // through document.getElementById, which only sees connected nodes
+        // (same order as the original append-then-wire flow).
+        if (entry.el.parentNode !== container) container.appendChild(entry.el);
+        if (anchor && entry.el.previousElementSibling !== anchor) {
+            container.insertBefore(entry.el, anchor.nextElementSibling);
+        }
+        anchor = entry.el;
+
+        if (entry.html !== cardHtml) {
+            entry.el.innerHTML = cardHtml;
+            entry.html = cardHtml;
+            entry.el.dataset.activeOp = 'false';
+
+            // Swap the default SVG illustration for a successfully loaded custom cover image
+            if (!hasCustomImage) {
+                const coverImg = entry.el.querySelector('.drive-illustration img.drive-cover-img');
+                if (coverImg) {
+                    const onCoverLoaded = () => {
+                        loadedDriveImages.add(normalizedId);
+                        const driveSvgEl = entry.el.querySelector('.drive-svg');
+                        if (driveSvgEl) driveSvgEl.style.display = 'none';
+                        coverImg.classList.remove('drive-cover-pending');
+                    };
+                    const onCoverError = () => {
+                        failedDriveImages.add(normalizedId);
+                        coverImg.remove();
+                    };
+                    coverImg.addEventListener('load', onCoverLoaded);
+                    coverImg.addEventListener('error', onCoverError);
+                    if (coverImg.complete) {
+                        if (coverImg.naturalWidth > 0) onCoverLoaded();
+                        else onCoverError();
+                    }
                 }
             }
-        }
-        container.appendChild(card);
 
-        // Asynchronously fetch SMART details only if not already known from WS broadcast
-        if (!getCachedSmartStatus(disk.name)) {
-            loadSmartStatus(disk.name);
+            // Asynchronously fetch SMART details only if not already known from WS broadcast
+            if (!getCachedSmartStatus(disk.name)) {
+                loadSmartStatus(disk.name);
+            }
+        }
+    });
+
+    // Remove cards for disks that no longer exist
+    diskCardCache.forEach((entry, key) => {
+        if (!seen.has(key)) {
+            entry.el.remove();
+            diskCardCache.delete(key);
         }
     });
 
     // Restore statuses for any active operations
+    opBannerCache.clear();
+    lastOpsActive = null;
     updateOperationsUI();
     if (window.applyGlobalLayout) window.applyGlobalLayout();
 }
@@ -560,12 +629,27 @@ function updateLedClass(diskName, ledClass) {
     
     const led = card.querySelector('.led-glow');
     if (led) {
-        led.className = `led-glow ${ledClass}`;
+        const wanted = `led-glow ${ledClass}`;
+        if (led.className !== wanted) led.className = wanted;
     }
 }
 
+// Last banner HTML applied per disk: identical banners skip the DOM write
+// entirely, so idle WS ticks perform zero mutations.
+const opBannerCache = new Map();
+let lastOpsActive = null;
+
 function updateOperationsUI() {
     if (!window.renderedDisksList || !Array.isArray(window.renderedDisksList)) return;
+
+    // Fast idle exit: nothing running now and nothing was running on the
+    // previous pass, so every card is already in its resting state.
+    const wipeJobs = (window.currentWipeStatus && window.currentWipeStatus.wiping) || [];
+    const smartJobs = (window.currentSmartStatus && window.currentSmartStatus.running_tests) || [];
+    const speedJobs = (window.currentSpeedtestStatus && window.currentSpeedtestStatus.running_tests) || [];
+    const anyActive = wipeJobs.length > 0 || smartJobs.length > 0 || speedJobs.length > 0;
+    if (!anyActive && lastOpsActive === false) return;
+    lastOpsActive = anyActive;
     
     window.renderedDisksList.forEach(disk => {
         const diskName = disk.name;
@@ -607,12 +691,19 @@ function updateOperationsUI() {
             }
         }
         
-        statusContainer.innerHTML = opBannerHTML;
+        // Write the banner only when its HTML actually changed
+        if (opBannerCache.get(diskName) !== opBannerHTML) {
+            statusContainer.innerHTML = opBannerHTML;
+            opBannerCache.set(diskName, opBannerHTML);
+        }
         
         if (activeOp) {
             card.dataset.activeOp = 'true';
             const led = card.querySelector('.led-glow');
-            if (led) led.className = `led-glow ${ledClass}`;
+            if (led) {
+                const wanted = `led-glow ${ledClass}`;
+                if (led.className !== wanted) led.className = wanted;
+            }
         } else {
             card.dataset.activeOp = 'false';
             // Restore S.M.A.R.T health led if available

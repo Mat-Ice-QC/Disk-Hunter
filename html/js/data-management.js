@@ -35,6 +35,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- File Browser Logic ---
     let currentPath = '';
 
+    const fileBrowserBody = document.getElementById('file-browser-body');
+
+    // One delegated listener for the whole table instead of inline onclick
+    // attributes and per-row listeners on every listing.
+    if (fileBrowserBody) {
+        fileBrowserBody.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('[data-fb-action]');
+            if (!actionBtn) return;
+            const action = actionBtn.dataset.fbAction;
+            if (action === 'open-dir') {
+                e.preventDefault();
+                currentPath = currentPath ? `${currentPath}/${actionBtn.dataset.name}` : actionBtn.dataset.name;
+                loadFileBrowser();
+            } else if (action === 'download') {
+                downloadFile(actionBtn.dataset.path);
+            } else if (action === 'delete') {
+                deleteItem(actionBtn.dataset.path, actionBtn.dataset.isDir === '1');
+            }
+        });
+    }
+
     const btnUpDir = document.getElementById('btn-up-dir');
     btnUpDir.addEventListener('click', () => {
         if (currentPath === '') return;
@@ -79,34 +100,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return a.is_dir ? -1 : 1;
             });
 
+            // Build the listing immediately: the table paints without waiting
+            // for recursive directory sizes, which are fetched per directory
+            // on demand and patched into the size cells as they arrive.
+            const dirRows = [];
             data.files.forEach(file => {
                 const tr = document.createElement('tr');
+                tr.dataset.path = file.path;
                 
                 const nameHtml = file.is_dir 
-                    ? `<a href="#" class="dir-link" data-name="${file.name}">${file.name}</a>`
+                    ? `<a href="#" class="dir-link" data-fb-action="open-dir" data-name="${file.name}">${file.name}</a>`
                     : `<span>${file.name}</span>`;
+
+                const sizeCellHtml = file.is_dir ? '\u2026' : formatBytes(file.size);
 
                 tr.innerHTML = `
                     <td>${nameHtml}</td>
                     <td>${file.is_dir ? 'Directory' : 'File'}</td>
-                    <td>${file.is_dir ? '-' : formatBytes(file.size)}</td>
+                    <td class="fb-size-cell">${sizeCellHtml}</td>
                     <td class="actions-cell">
-                        ${!file.is_dir ? `<button class="btn-action btn-primary-inline btn-sm" onclick="downloadFile('${file.path}')">Download</button>` : ''}
-                        <button class="btn-action btn-accent-red btn-sm" onclick="deleteItem('${file.path}', ${file.is_dir})">Delete</button>
+                        ${!file.is_dir ? `<button class="btn-action btn-primary-inline btn-sm" data-fb-action="download" data-path="${file.path}">Download</button>` : ''}
+                        <button class="btn-action btn-accent-red btn-sm" data-fb-action="delete" data-path="${file.path}" data-is-dir="${file.is_dir ? '1' : '0'}">Delete</button>
                     </td>
                 `;
+                if (file.is_dir) dirRows.push({ path: file.path, tr: tr });
                 tbody.appendChild(tr);
             });
 
-            // Add event listeners for directory links
-            document.querySelectorAll('.dir-link').forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const dirName = e.target.getAttribute('data-name');
-                    currentPath = currentPath ? `${currentPath}/${dirName}` : dirName;
-                    loadFileBrowser();
-                });
-            });
+            // Fetch directory totals in the background and patch the cells in
+            const loadDirSize = async (row) => {
+                const cell = row.tr.querySelector('.fb-size-cell');
+                if (!cell) return;
+                try {
+                    const sizeRes = await fetch('/api/data-management/dir-size?path=' + encodeURIComponent(row.path));
+                    const sizeData = await sizeRes.json();
+                    if (sizeData.status === 'success' && row.tr.isConnected) {
+                        cell.textContent = formatBytes(sizeData.total_size || 0);
+                    }
+                } catch (e) { /* size stays as the placeholder */ }
+            };
+            dirRows.forEach(loadDirSize);
 
         } catch (err) {
             statusDiv.innerHTML = `<span style="color: var(--accent-red);">Network error.</span>`;
@@ -114,11 +147,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.downloadFile = function(filePath) {
+    function downloadFile(filePath) {
         window.location.href = `/api/data-management/download?path=${encodeURIComponent(filePath)}`;
-    };
+    }
 
-    window.deleteItem = async function(filePath, isDir) {
+    function deleteItem(filePath, isDir) {
         const itemType = isDir ? 'directory' : 'file';
         customConfirm(`Are you sure you want to delete this ${itemType}: ${filePath}? This action cannot be undone.`, async () => {
             const statusDiv = document.getElementById('file-browser-status');
@@ -146,6 +179,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
     }
+
+    // --- Root Disk Usage Indicator ---
+    async function loadRootUsage() {
+        const fill = document.getElementById('root-usage-fill');
+        const label = document.getElementById('root-usage-label');
+        const headerLabel = document.getElementById('sys-root-usage');
+        try {
+            const res = await fetch('/api/system/root-usage');
+            const data = await res.json();
+            if (data.status !== 'success') {
+                if (label) label.innerText = 'Usage unavailable';
+                return;
+            }
+            const pct = data.percent_used;
+            if (fill) {
+                fill.style.width = pct + '%';
+                fill.classList.remove('warn', 'danger');
+                if (pct >= 90) fill.classList.add('danger');
+                else if (pct >= 75) fill.classList.add('warn');
+            }
+            const text = `${formatBytes(data.used_bytes, 1)} of ${formatBytes(data.total_bytes, 1)} used (${pct}%)`;
+            if (label) label.innerText = text;
+            if (headerLabel) headerLabel.innerText = `Disk ${pct}%`;
+        } catch (err) {
+            if (label) label.innerText = 'Usage unavailable';
+        }
+    }
+    loadRootUsage();
 
     // Initial load
     loadFileBrowser();

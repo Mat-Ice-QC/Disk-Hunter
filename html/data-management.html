@@ -17,6 +17,19 @@
         <div class="content">
             <h2 class="title-main">Data Management</h2>
             
+            <div class="card settings-card">
+                <div class="card-header-flex" onclick="toggleCard(this)">
+                    <h3>Root Disk Usage</h3>
+                    <span class="minimize-icon">&#9660;</span>
+                </div>
+                <div class="card-content">
+                    <div class="usage-progress">
+                        <div id="root-usage-fill" class="usage-progress-fill"></div>
+                    </div>
+                    <p id="root-usage-label" class="usage-label">Loading...</p>
+                </div>
+            </div>
+
             <div class="settings-grid">
                 <div class="card settings-card card-warning">
                     <div class="card-header-flex" onclick="toggleCard(this)">

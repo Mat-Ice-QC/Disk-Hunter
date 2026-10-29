@@ -39,6 +39,42 @@ async def get_smart_data(device_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred in smart-provider: {str(e)}")
 
+@app.get("/selftestlog/{device_name}")
+async def get_selftest_log(device_name: str):
+    """Return the raw `smartctl -l selftest` output for a device. The backend
+    API calls this instead of running smartctl itself (the API image does not
+    ship smartmontools; this container is the SMART access path)."""
+    if '..' in device_name or '/' in device_name:
+        raise HTTPException(status_code=400, detail="Invalid device name format.")
+
+    device_path = f"/dev/{device_name}"
+
+    if not os.path.exists(device_path):
+        raise HTTPException(status_code=404, detail=f"Device {device_name} not found at {device_path}")
+
+    try:
+        cmd = ["smartctl", "-l", "selftest", device_path]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+
+        stdout_str = stdout.decode('utf-8', errors='ignore')
+        stderr_str = stderr.decode('utf-8', errors='ignore')
+
+        if "Device open failed" in stderr_str or "Unavailable" in stderr_str:
+            raise HTTPException(status_code=404, detail=f"Device {device_name} could not be opened by smartctl.")
+
+        return {"device": device_name, "selftest_log": stdout_str or stderr_str}
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="smartctl command not found inside the smart-provider container.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred in smart-provider: {str(e)}")
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
