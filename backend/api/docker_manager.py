@@ -46,7 +46,7 @@ async def wait_for_container(container_name: str) -> str:
     stdout, _ = await proc.communicate()
     return stdout.decode().strip()
 
-def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None, debug_list: list = None, cmd_out: list = None) -> bool:
+def run_container(name: str, image: str, args: list[str], privileged: bool = False, devices: list[str] = None, detach: bool = True, tty: bool = False, env: dict = None, debug_list: list = None, cmd_out: list = None, pid_host: bool = False) -> bool:
     """Runs a docker container and returns True if successful. Optional debug_list collects docker commands and outputs; cmd_out collects the exact run command as a shell-quoted string."""
     rm_cmd = ["docker", "rm", "-f", name]
     if debug_list is not None:
@@ -67,6 +67,9 @@ def run_container(name: str, image: str, args: list[str], privileged: bool = Fal
     
     if privileged:
         cmd.append("--privileged")
+
+    if pid_host:
+        cmd.extend(["--pid", "host"])
         
     if devices:
         for d in devices:

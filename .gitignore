@@ -9,6 +9,10 @@ __pycache__/
 
 # AI agent instructions
 AI/
+AGENTS.md
+
+# Playwright MCP browser artifacts (page snapshots, console logs)
+.playwright-mcp/
 
 # Runtime / persistent data
 data/

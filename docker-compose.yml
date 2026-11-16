@@ -104,6 +104,18 @@ services:
         JQ_VERSION: ${JQ_VERSION:-1.7.1-r0}
     image: disk-hunter-speedtest
 
+  # Ephemeral host power worker: started ad hoc by the API (POST
+  # /api/system/power) with --privileged and --pid=host so it can ask the
+  # host's systemd (PID 1) for a graceful poweroff/reboot. Build-only image
+  # definition; no runtime section, mirroring the other spawned workers.
+  disk-hunter-power:
+    build:
+      context: ./workers/power
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+        UTIL_LINUX_VERSION: ${UTIL_LINUX_VERSION:-2.40.1-r1}
+    image: disk-hunter-power
+
   # Local console kiosk: runs Firefox ESR in kiosk mode on the host's tty2,
   # pointed at the Disk-Hunter UI. Intended for air-gapped deployments where
   # the operator drives Disk Hunter directly from the machine's physical

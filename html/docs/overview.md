@@ -21,3 +21,7 @@ Enabling this setting in Settings prevents the primary operating system disk fro
 :::accordion Clearing Operational History
 Technicians can clear the action history logs (Shredding history, S.M.A.R.T. logs, speedtest records, or downloaded ISO files) directly from the Settings panel to reclaim local storage space and maintain operational cleanliness.
 :::
+
+:::accordion Host Power Controls
+The dashboard's Shut Down Host and Reboot Host buttons power off or restart the machine itself, not just the containers. Each action asks for confirmation, is refused while disk operations are running (so a wipe is never interrupted), and is executed by a privileged worker container that asks the host's systemd for a graceful shutdown — running containers are stopped cleanly first. The buttons can be hidden entirely with `POWER_ACTIONS_ENABLED=false` in the `.env` file.
+:::

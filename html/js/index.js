@@ -49,6 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Host power controls (shutdown / reboot the machine itself)
+    initPowerControls();
+
     // 2. WebSocket real-time synchronizers
     document.addEventListener('ws-disks', (e) => {
         renderDisks(e.detail);
@@ -101,6 +104,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('ws-speedtest_status', (e) => {
         window.currentSpeedtestStatus = e.detail;
         updateOperationsUI();
+    });
+
+    // Busy set changed (wipes, self-tests, speedtests, partition jobs):
+    // re-evaluate whether the host power buttons must be disabled.
+    document.addEventListener('ws-busy_disks', () => {
+        updatePowerButtonStates();
+    });
+
+    // Another client (or this one) initiated a host shutdown/reboot
+    document.addEventListener('ws-power_action', (e) => {
+        handlePowerActionBroadcast(e.detail || {});
+    });
+
+    // WebSocket (re)connection: after a host reboot initiated from any
+    // client, the first successful reconnection restores the power buttons
+    // (a shutdown host never comes back, so its lock stays).
+    document.addEventListener('ws-open', () => {
+        wsOpenCount++;
+        if (wsOpenCount > 1 && powerActionInitiated && lastPowerAction === 'reboot') {
+            powerActionInitiated = false;
+            updatePowerButtonStates();
+        }
     });
 
     // 3. Performance Optimization: Read instantly from WebSocket cache if it exists
@@ -719,6 +744,8 @@ function updateOperationsUI() {
             }
         }
     });
+
+    updatePowerButtonStates();
 }
 
 // --- Image Lightbox ---
@@ -744,3 +771,96 @@ window.openImageLightbox = function(url, title) {
     modal.querySelector('.lightbox-title').innerText = title || '';
     modal.classList.add('active');
 };
+
+/* --- Host power controls (Shut Down Host / Reboot Host) --- */
+
+const POWER_BTN_IDS = ['btn-power-shutdown', 'btn-power-reboot'];
+let powerButtonsDisabledState = null;
+let powerActionInitiated = false;
+let lastPowerAction = null;
+let suppressNextPowerBroadcast = false;
+let wsOpenCount = 0;
+
+function setPowerButtonsDisabled(disabled) {
+    if (powerActionInitiated) disabled = true;
+    if (disabled === powerButtonsDisabledState) return;
+    powerButtonsDisabledState = disabled;
+    POWER_BTN_IDS.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = disabled;
+    });
+}
+
+function updatePowerButtonStates() {
+    const wipeJobs = (window.currentWipeStatus && window.currentWipeStatus.wiping) || [];
+    const smartJobs = (window.currentSmartStatus && window.currentSmartStatus.running_tests) || [];
+    const speedJobs = (window.currentSpeedtestStatus && window.currentSpeedtestStatus.running_tests) || [];
+    const busyCount = window.latestBusyDisks instanceof Set ? window.latestBusyDisks.size : 0;
+    setPowerButtonsDisabled(wipeJobs.length > 0 || smartJobs.length > 0 || speedJobs.length > 0 || busyCount > 0);
+}
+
+function initPowerControls() {
+    POWER_BTN_IDS.forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const action = id === 'btn-power-shutdown' ? 'shutdown' : 'reboot';
+            requestHostPowerAction(action);
+        });
+    });
+    updatePowerButtonStates();
+}
+
+function requestHostPowerAction(action) {
+    const confirmMsg = window.translate(
+        'power_confirm_' + action,
+        action === 'shutdown'
+            ? 'This will power off the host machine. All running operations stop and the web UI stays down until the machine is powered back on. Shut down the host?'
+            : 'This will restart the host machine. All running operations stop and the web UI drops until the host is back. Reboot the host?'
+    );
+    const title = window.translate('power_title', 'Host Power');
+    window.customConfirm(confirmMsg, async () => {
+        try {
+            const res = await fetch('/api/system/power', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            });
+            const data = await res.json();
+            if (data.status === 'initiated') {
+                lastPowerAction = action;
+                powerActionInitiated = true;
+                suppressNextPowerBroadcast = true;
+                setPowerButtonsDisabled(true);
+                window.customAlert(window.translate('power_' + action + '_initiated', 'Host ' + action + ' initiated. The machine will go down shortly.'), title);
+            } else if (data.status === 'busy') {
+                window.customAlert(window.translate('power_busy_refused', 'Power action refused: operations are running on:') + ' ' + (data.busy_disks || []).join(', '), title);
+            } else {
+                window.customAlert(window.translate('power_failed', 'Power action failed:') + ' ' + (data.message || 'unknown error'), title);
+            }
+        } catch (e) {
+            window.customAlert(window.translate('power_failed', 'Power action failed:') + ' ' + e, title);
+        }
+    }, title);
+}
+
+function handlePowerActionBroadcast(detail) {
+    powerActionInitiated = true;
+    lastPowerAction = detail.action === 'reboot' ? 'reboot' : 'shutdown';
+    setPowerButtonsDisabled(true);
+    if (suppressNextPowerBroadcast) {
+        // This client already showed the result of its own POST; the
+        // broadcast only confirmed it.
+        suppressNextPowerBroadcast = false;
+        return;
+    }
+    const title = window.translate('power_title', 'Host Power');
+    if (detail.error) {
+        powerActionInitiated = false;
+        setPowerButtonsDisabled(false);
+        window.customAlert(window.translate('power_failed', 'Power action failed:') + ' ' + detail.error, title);
+        return;
+    }
+    const action = detail.action === 'reboot' ? 'reboot' : 'shutdown';
+    window.customAlert(window.translate('power_' + action + '_initiated', 'Host ' + action + ' initiated. The machine will go down shortly.'), title);
+}

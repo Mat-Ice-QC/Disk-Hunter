@@ -513,3 +513,37 @@
     stroke-linecap: round;
     stroke-linejoin: round;
 }
+
+/* --- Dashboard host power controls (Shut Down Host / Reboot Host) --- */
+
+.btn-power-shutdown {
+    background: linear-gradient(135deg, #7f1d1d, #450a0a);
+    border-color: rgba(248, 113, 113, 0.35);
+    color: #fecaca;
+}
+
+.btn-power-shutdown:hover {
+    background: linear-gradient(135deg, #991b1b, #5a1010);
+    box-shadow: 0 6px 15px rgba(127, 29, 29, 0.35);
+}
+
+.btn-power-reboot {
+    background: linear-gradient(135deg, #1e3a5f, #172a45);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: #bfdbfe;
+}
+
+.btn-power-reboot:hover {
+    background: linear-gradient(135deg, #1e40af, #1e3a8a);
+    box-shadow: 0 6px 15px rgba(30, 64, 175, 0.35);
+}
+
+/* Shared disabled state for dashboard action buttons (power buttons are
+   disabled while disk operations run and after a power action starts). */
+.btn-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    pointer-events: none;
+}
