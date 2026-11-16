@@ -1,5 +1,6 @@
 import socket
 import os
+import asyncio
 import shutil
 import json
 import glob
@@ -7,8 +8,11 @@ import subprocess
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
+
+from .docker_manager import run_container
+from .disks import get_busy_disks
 
 router = APIRouter()
 
@@ -209,6 +213,92 @@ def sync_ntp():
     return {"status": "error", "message": f"NTP sync failed: {last_error}"}
 
 
+class PowerActionRequest(BaseModel):
+    action: str  # "shutdown" or "reboot"
+
+
+def power_actions_enabled() -> bool:
+    """POWER_ACTIONS_ENABLED gates the dashboard host power buttons. Default on."""
+    return os.getenv("POWER_ACTIONS_ENABLED", "true").lower() == "true"
+
+
+def _power_image_available() -> bool:
+    """True when the disk-hunter-power worker image has been built."""
+    try:
+        res = subprocess.run(["docker", "image", "inspect", "disk-hunter-power"],
+                             capture_output=True, text=True, timeout=10)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+async def _execute_power_action(action: str, initiated_by: str):
+    """Background task: notify every connected client over WebSocket, then
+    start the privileged --pid=host power worker that asks the host's
+    systemd to power off / reboot the machine. Runs after the HTTP response
+    has been sent; the sleeps let the response and the broadcast land
+    before the host starts going down."""
+    await asyncio.sleep(1.5)
+    try:
+        # Lazy import: api.ws imports this module at load time.
+        from .ws import manager
+        await manager.broadcast(json.dumps({"power_action": {
+            "action": action,
+            "initiated_by": initiated_by,
+            "timestamp": get_local_time(),
+        }}))
+    except Exception as e:
+        print(f"Power action broadcast failed: {e}")
+    await asyncio.sleep(1.5)
+    debug = []
+    ok = run_container(
+        name="disk_hunter_power",
+        image="disk-hunter-power",
+        args=[action],
+        privileged=True,
+        pid_host=True,
+        debug_list=debug,
+    )
+    if not ok:
+        print(f"Power worker failed to start: {' | '.join(debug)}")
+        try:
+            from .ws import manager
+            await manager.broadcast(json.dumps({"power_action": {
+                "action": action,
+                "initiated_by": initiated_by,
+                "error": "Power worker container failed to start (see API logs).",
+            }}))
+        except Exception:
+            pass
+
+
+@router.post("/api/system/power")
+async def request_power_action(req: PowerActionRequest, background_tasks: BackgroundTasks, http_request: Request):
+    """Power off or reboot the HOST machine (not a container). Gated by
+    POWER_ACTIONS_ENABLED and refused while disk operations are running so a
+    wipe is never interrupted. The work itself is done by the ephemeral
+    disk-hunter-power worker container (privileged, --pid=host) which asks
+    the host's systemd for a graceful poweroff/reboot."""
+    action = (req.action or "").strip().lower()
+    if action not in ("shutdown", "reboot"):
+        return {"status": "error",
+                "message": "Invalid action. Use 'shutdown' or 'reboot'."}
+    if not power_actions_enabled():
+        return {"status": "error",
+                "message": "Host power actions are disabled (POWER_ACTIONS_ENABLED != 'true')."}
+    busy = get_busy_disks()
+    if busy:
+        return {"status": "busy",
+                "busy_disks": busy,
+                "message": "Power action refused: operations are running on " + ", ".join(busy) + "."}
+    if not _power_image_available():
+        return {"status": "error",
+                "message": "Power worker image is not built. Run: docker compose build disk-hunter-power"}
+    background_tasks.add_task(_execute_power_action, action, get_client_ip(http_request))
+    return {"status": "initiated", "action": action,
+            "message": f"Host {action} initiated. The machine will go down shortly."}
+
+
 @router.get("/api/system/features")
 def system_features():
     return {
@@ -219,6 +309,7 @@ def system_features():
         "ENABLE_DATA_MANAGEMENT": os.getenv("ENABLE_DATA_MANAGEMENT", "true").lower() == "true",
         "ENABLE_NETWORK_SHARE": os.getenv("ENABLE_NETWORK_SHARE", "true").lower() == "true",
         "ENABLE_DELETE_HISTORY": os.getenv("ENABLE_DELETE_HISTORY", "true").lower() == "true",
+        "POWER_ACTIONS_ENABLED": power_actions_enabled(),
     }
 
 @router.post("/api/system/rescan")

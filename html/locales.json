@@ -106,7 +106,18 @@
     "btn_cancel_wipe": "Cancel",
     "label": "Label",
     "path": "Path",
-    "size": "Size"
+    "size": "Size",
+    "active_disks": "Active Disks",
+    "rescan_hardware": "Rescan Hardware",
+    "power_title": "Host Power",
+    "power_shutdown": "Shut Down Host",
+    "power_reboot": "Reboot Host",
+    "power_confirm_shutdown": "This will power off the host machine. All running operations stop and the web UI stays down until the machine is powered back on. Shut down the host?",
+    "power_confirm_reboot": "This will restart the host machine. All running operations stop and the web UI drops until the host is back. Reboot the host?",
+    "power_shutdown_initiated": "Host shutdown initiated. The machine powers off shortly; this page will stop responding until the host is powered back on.",
+    "power_reboot_initiated": "Host reboot initiated. This page drops and reconnects automatically once the host is back.",
+    "power_busy_refused": "Power action refused: operations are running on:",
+    "power_failed": "Power action failed:"
   },
   "fr": {
     "nav_overview": "Aperçu des Disques",
@@ -215,7 +226,18 @@
     "btn_cancel_wipe": "Annuler",
     "label": "Étiquette",
     "path": "Chemin",
-    "size": "Taille"
+    "size": "Taille",
+    "active_disks": "Disques actifs",
+    "rescan_hardware": "Rescanner le matériel",
+    "power_title": "Marche/arrêt de l'hôte",
+    "power_shutdown": "Arrêter l'hôte",
+    "power_reboot": "Redémarrer l'hôte",
+    "power_confirm_shutdown": "Cela va éteindre la machine hôte. Toutes les opérations en cours s'arrêtent et l'interface web reste inaccessible jusqu'au rallumage de la machine. Éteindre l'hôte ?",
+    "power_confirm_reboot": "Cela va redémarrer la machine hôte. Toutes les opérations en cours s'arrêtent et l'interface web sera indisponible pendant le redémarrage. Redémarrer l'hôte ?",
+    "power_shutdown_initiated": "Extinction de l'hôte lancée. La machine s'éteint dans un instant ; cette page cessera de répondre jusqu'au rallumage de l'hôte.",
+    "power_reboot_initiated": "Redémarrage de l'hôte lancé. Cette page sera coupée et se reconnectera automatiquement au retour de l'hôte.",
+    "power_busy_refused": "Action refusée : des opérations sont en cours sur :",
+    "power_failed": "Échec de l'action d'alimentation :"
   },
   "es": {
     "nav_overview": "Resumen de Discos",
@@ -324,6 +346,17 @@
     "btn_cancel_wipe": "Cancelar",
     "label": "Etiqueta",
     "path": "Ruta",
-    "size": "Tamaño"
+    "size": "Tamaño",
+    "active_disks": "Discos activos",
+    "rescan_hardware": "Reescanear hardware",
+    "power_title": "Encendido del host",
+    "power_shutdown": "Apagar el host",
+    "power_reboot": "Reiniciar el host",
+    "power_confirm_shutdown": "Esto apagará la máquina host. Todas las operaciones en curso se detienen y la interfaz web quedará inaccesible hasta que la máquina vuelva a encenderse. ¿Apagar el host?",
+    "power_confirm_reboot": "Esto reiniciará la máquina host. Todas las operaciones en curso se detienen y la interfaz web quedará indisponible durante el reinicio. ¿Reiniciar el host?",
+    "power_shutdown_initiated": "Apagado del host iniciado. La máquina se apagará en breve; esta página dejará de responder hasta que el host vuelva a encenderse.",
+    "power_reboot_initiated": "Reinicio del host iniciado. Esta página se cortará y se reconectará automáticamente cuando el host vuelva.",
+    "power_busy_refused": "Acción rechazada: hay operaciones en curso en:",
+    "power_failed": "Error en la acción de encendido:"
   }
 }

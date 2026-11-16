@@ -467,9 +467,13 @@ function updateSystemInfoUI(data) {
 // and always dispatch so running jobs keep updating.
 const WS_SECTIONS = [
     'disks', 'smart_health', 'wipe_status', 'speedtest_status',
-    'smart_status', 'iso_download_status', 'iso_write_status'
+    'smart_status', 'iso_download_status', 'iso_write_status',
+    'busy_disks', 'power_action'
 ];
-const WS_PROGRESS_SECTIONS = ['wipe_status', 'speedtest_status', 'smart_status', 'iso_download_status', 'iso_write_status'];
+// busy_disks dispatches only when the set changes; power_action appears only
+// in one-off broadcasts from POST /api/system/power (never in the periodic
+// payload), so it always dispatches when present.
+const WS_PROGRESS_SECTIONS = ['wipe_status', 'speedtest_status', 'smart_status', 'iso_download_status', 'iso_write_status', 'power_action'];
 const WS_CACHE_WRITE_INTERVAL = 5000; // min ms between 'dh_ws_cache' writes
 
 const wsLastSectionJson = {}; // section -> last JSON string
@@ -535,6 +539,7 @@ function initWebSocket() {
     
     ws.onopen = () => {
         console.log("WebSocket connected");
+        document.dispatchEvent(new CustomEvent('ws-open'));
     };
     
     ws.onmessage = (event) => {
@@ -1031,6 +1036,9 @@ function fetchFeatures() {
             }
             if (data.ENABLE_NETWORK_SHARE === false) {
                 document.getElementById('nav-network-share')?.setAttribute('style', 'display: none !important');
+            }
+            if (data.POWER_ACTIONS_ENABLED === false) {
+                document.getElementById('dashboard-power-controls')?.setAttribute('style', 'display: none !important');
             }
             if (data.ENABLE_DELETE_HISTORY === false) {
                 // Hide clear history buttons

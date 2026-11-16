@@ -21,3 +21,7 @@ L'activation de ce paramètre dans les Paramètres empêche le disque principal 
 :::accordion Effacement de l'historique opérationnel
 Les techniciens peuvent effacer les journaux d'historique des actions (historique de broyage, rapports S.M.A.R.T., enregistrements speedtest ou fichiers ISO téléchargés) directement depuis le panneau des Paramètres pour libérer de l'espace de stockage local et maintenir la propreté opérationnelle.
 :::
+
+:::accordion Marche/arrêt de l'hôte
+Les boutons Arrêter l'hôte et Redémarrer l'hôte du tableau de bord éteignent ou redémarrent la machine elle-même, et pas seulement les conteneurs. Chaque action demande une confirmation, est refusée pendant que des opérations sur les disques sont en cours (un effacement n'est jamais interrompu) et est exécutée par un conteneur worker privilégié qui demande à systemd de l'hôte un arrêt propre — les conteneurs en cours sont d'abord arrêtés correctement. Les boutons peuvent être masqués entièrement avec `POWER_ACTIONS_ENABLED=false` dans le fichier `.env`.
+:::
